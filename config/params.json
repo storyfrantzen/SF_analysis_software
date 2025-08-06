@@ -1,0 +1,10 @@
+{
+    "ebeam": 6.535,
+    "torus": 1,
+    "channel": "eppi0",
+    "fiducialCuts": [],
+    "qadbRequirements": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
+    "isMC": false,
+    "writeSummary": true
+  }
+  

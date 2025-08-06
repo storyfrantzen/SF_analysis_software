@@ -1,15 +1,32 @@
 #include "ProcessManager.h"
 #include "Kinematics.h" // Note: ProcessManager will use kinematics class for computing derived quantities
-#include <cmath>
-#include <cstdint>  // for int8_t
 #include "TLorentzVector.h"
 #include "PhysicalConstants.h" // contains useful constants
+#include <cmath>
+#include <cstdint>  // for int8_t
+#include <iomanip>  // for std::put_time
+#include <sstream>  // for std::ostringstream
+#include <ctime>    // for std::time_t, std::localtime
 
 using namespace clas12;
 
 //////////////////////////////////////////////////////////
 // Little helper functions called by bigger functions: ///
 //////////////////////////////////////////////////////////
+
+std::string ProcessManager::currentTimestamp() const {
+    auto now = std::chrono::system_clock::now();
+    std::time_t tt = std::chrono::system_clock::to_time_t(now);
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&tt), "%Y%m%d_%H%M%S");
+    return ss.str();
+}
+
+std::string ProcessManager::makeFilename() const {
+    std::stringstream ss;
+    ss << Ebeam_ << "_" << torus_ << "_" << channel_ << "_" << eventsProcessed_ << "_" << currentTimestamp() << ".root";
+    return ss.str();
+}
 
 // Currently in use. Default is -8 <= z <= 2.
 bool ProcessManager::passesVertexCut(clas12::region_particle* p, const int zmin, const int zmax) { 
@@ -155,9 +172,7 @@ void ProcessManager::writeEPPI0Branches() {
 }
 
 // initializes ROOT Tree and links branches with corresponding event-time variables. NOTE: requires channel_ & topology_
-void ProcessManager::rootTree(const std::string output_file) {
-
-    outFile_ = new TFile(output_file.c_str(), "RECREATE");
+void ProcessManager::rootTree() {
     tree_ = new TTree("Events", "CLAS12 event data");
     tree_->SetAutoSave(0);
     tree_->SetAutoFlush(5000);
@@ -332,7 +347,6 @@ void ProcessManager::fillRecVars(clas12::region_particle* p, int ele_info, int p
 
 // assigns electron vars from electron `ele`, called by ProcessEvent() on an event basis
 void ProcessManager::fillEleVars(clas12::region_particle* ele, int info) {
-
     if (info > 0) {
         e_p_            = ele->getP();
         e_theta_        = ele->getTheta();
@@ -385,7 +399,6 @@ void ProcessManager::fillEleVars(clas12::region_particle* ele, int info) {
 
 // assigns proton vars from proton `pro`, called by ProcessEvent() on an event basis
 void ProcessManager::fillProVars(clas12::region_particle* pro, int info) {
-
     if (info > 0) {
 
         p_p_            = pro->getP();
@@ -429,7 +442,6 @@ void ProcessManager::fillProVars(clas12::region_particle* pro, int info) {
 
 // assigns photon vars from photon `pho`, called by ProcessEvent() on an event basis
 void ProcessManager::fillPhoVars(clas12::region_particle* pho, int info) {
-    
     if (info > 0) {
         g_p_            = pho->getP();
         g_theta_        = pho->getTheta();
@@ -472,7 +484,8 @@ void ProcessManager::fillEPPI0Vars(Kinematics Kin) {
 }
 
 // writes ROOT Tree to `outFile_` and frees up memory allocated to `tree_` and `outFile`. Called AFTER processing
-void ProcessManager::finalize() {
+void ProcessManager::finalize(const std::string& output_file) {
+    outFile_ = new TFile(output_file.c_str(), "RECREATE");
     if (outFile_) {
         outFile_->cd();
         if (tree_) {
@@ -492,7 +505,6 @@ void ProcessManager::finalize() {
 
 // MAIN WORKFLOW PERFORMED HERE:
 void ProcessManager::processEvent(clas12::clas12reader& c12) {
-
     if (channel_ == "trigger") {
         auto electrons = c12.getByID(11);
         if (electrons.size() < 1) return;
@@ -508,6 +520,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
         fillEleVars(trigEle);
         tree_->Fill();
+        numFills_++;
     }
     else if (channel_ == "gen") {
 
@@ -551,6 +564,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             }
 
             tree_->Fill();
+            numFills_++;
         }
 
     }
@@ -589,7 +603,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
             fillRecVars(p);
             tree_->Fill();
-
+            numFills_++;
         }
     }
     else if (channel_ == "inclusiveGEMC") {
@@ -674,6 +688,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
             fillRecVars(p);
             tree_->Fill();
+            numFills_++;
         }
     }
     else if (channel_ == "matchingWIP") {
@@ -856,6 +871,8 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
         // FILL TREE, ONCE PER EVENT:
         tree_->Fill();
+        numFills_++;
     }
+    eventsProcessed_++;
 }
 

@@ -11,9 +11,9 @@
 class ProcessManager {
 public:
 
-    // Setters defined HERE: //
-    void setChannel(const std::string channel) { channel_ = channel; }
-    void setTorus(const int torus) { torus_ = torus; }
+    // Setters defined here: //
+    void setChannel(const std::string channel) {channel_ = channel;}
+    void setTorus(const int torus) {torus_ = torus;}
     void setTopology(const std::vector<std::string>& topology) {
     if (topology.size() != 2) {
         std::cerr << "[Warning] setTopology: Search for 2 elements was unsuccessful." << std::endl;
@@ -43,10 +43,16 @@ public:
     detPho_ = (pho == "FT") ? 0 : (pho == "FD") ? 1 : 2;
     detPro_ = (pro == "FD") ? 1 : 2;
 }
-    void setEbeam(const float Ebeam) { Ebeam_ = Ebeam; }
-    void setFiducialCuts(FiducialCuts& fiducialCuts) { fiducialCuts_ = &fiducialCuts; }
+    void setEbeam(const float Ebeam) {Ebeam_ = Ebeam;}
+    void setFiducialCuts(FiducialCuts& fiducialCuts) {fiducialCuts_ = &fiducialCuts;}
+
+    // Getters defined here: //
+    int eventsProcessed() {return eventsProcessed_;}
+    int numFills() {return numFills_;}
 
     // LITTLE FUNCTIONS: //
+    std::string currentTimestamp() const; 
+    std::string makeFilename() const;
     bool passesVertexCut(clas12::region_particle* p, const int zmin=-8, const int zmax=2);
     bool passesDiagECALCut(clas12::region_particle* ele);
     int  getDetector(int status);
@@ -56,23 +62,24 @@ public:
     void writeProBranches(int info=1);
     void writePhoBranches(int info=1);
     void writeEPPI0Branches();
-    void rootTree(const std::string output_file);
+    void rootTree();
     void fillRecVars(clas12::region_particle* p, int ele_info=1, int pro_info=1, int pho_info=1);
     void fillEleVars(clas12::region_particle* ele, int info=1);
     void fillProVars(clas12::region_particle* pro, int info=1);
     void fillPhoVars(clas12::region_particle* pho, int info=1);
     void fillEPPI0Vars(Kinematics EPPI0);
     void processEvent(clas12::clas12reader& c12);
-    void finalize();
+    void finalize(const std::string& output_file);
 
 private:
 
+    int eventsProcessed_ = 0;
+    int numFills_ = 0;
+
+    double Ebeam_;
     std::string channel_;
     int torus_;
-
     bool requireTopology_;
-
-    float Ebeam_;
 
     FiducialCuts* fiducialCuts_ = nullptr;
 

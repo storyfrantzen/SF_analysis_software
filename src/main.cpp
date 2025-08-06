@@ -8,9 +8,13 @@
 
 #include "includes.h"
 
-namespace fs = std::filesystem;
+#include "nlohmann/json.hpp"
+#include <fstream>
 
+namespace fs = std::filesystem;
+using json = nlohmann::json;
 using namespace std;
+
 
 struct ArgResults {
     std::vector<std::string> files;
@@ -42,8 +46,8 @@ ArgResults readArgs(int argc, char** argv) {
         return result;
     }
     fs::path configPath(argv[1]);
-    if (configPath.extension() != ".conf") {
-        std::cerr << "ERROR: First argument must be a valid .conf file." << std::endl;
+    if (configPath.extension() != ".json") {
+        std::cerr << "ERROR: First argument must be a valid .json file." << std::endl;
         return result;
     }
     result.configFile = argv[1];
@@ -78,40 +82,32 @@ ArgResults readArgs(int argc, char** argv) {
 int main(int argc, char** argv) {
 
     auto start = std::chrono::high_resolution_clock::now();
-
     auto args = readArgs(argc, argv);
 
-    // Must find configuration file containing processing tags:
-    std::string CONFIG_FILE = args.configFile;
-
-    try {
-        ConfigLoader config(CONFIG_FILE);
-    } 
-    catch (const std::exception& e) {
-        std::cerr << "Failed to load config file: " << e.what() << std::endl;
+    // Must find configuration .json file containing processing tags:
+    std::ifstream configStream(args.configFile);
+    if (!configStream.is_open()) {
+        std::cerr << "Failed to open config file: " << args.configFile << std::endl;
         return 1;
     }
-
-    // Initialize ConfigLoader:
-    ConfigLoader config(CONFIG_FILE);
+    
+    json config;
+    configStream >> config;
 
     // Add numFiles .hipo files to HipoChain:
     clas12root::HipoChain chain;
-    for (int i = 0; i < args.numFiles; ++i) { chain.Add(args.files[i]); } 
+    for (int i = 0; i < args.numFiles; ++i) {
+        chain.Add(args.files[i]);
+    } 
 
     // Prepare physics analysis:
     auto config_c12=chain.GetC12Reader();
     auto& c12=chain.C12ref();
 
-    // If input file is NOT MC, populate C12Reader with QA tags found by ConfigLoader:
-    if (!config.contains("isMC") || (config.contains("isMC") && !config.getBool("isMC"))) {
-
-        // Populate C12Reader with QA tags found by ConfigLoader:
+    if (!config.value("isMC", false)) {
         if (config_c12->qadb() != nullptr) {
-            for (const auto& tag : config.getQARequirements()) {
+            for (const auto& tag : config["qa"])
                 config_c12->db()->qadb_addQARequirement(tag);
-            }
-            //config_c12->db()->qadb_requireOkForAsymmetry(true);
             config_c12->applyQA();
         }
     }
@@ -119,35 +115,27 @@ int main(int argc, char** argv) {
     // Instantiate ProcessManager for workflow:
     ProcessManager PM;
 
-    // Get parameters to filter events:
-    const int TORUS = config.getTorus();
-    PM.setTorus(TORUS);
-    std::string CHANNEL = config.getChannel();
-    PM.setChannel(CHANNEL);
-    const double EBEAM = config.getEbeam();
-    PM.setEbeam(EBEAM);
-    std::vector<std::string> TOPOLOGY = config.getTopology();
-    PM.setTopology(TOPOLOGY);
+    PM.setEbeam(config["ebeam"]);
+    PM.setTorus(config["torus"]);
+    PM.setChannel(config["channel"]);
+    //PM.setTpology(config["topology"].get<std::vector<std::string>>())
 
-    // Initialize output ROOT Tree. This function must be called after CHANNEL_ & TOPOLOGY_ have been set
-    std::string OUTPUT_ROOT_FILE = config.getOutputFile();
-    PM.rootTree(OUTPUT_ROOT_FILE);
+    // Initialize ROOT Tree. This function must be called after CHANNEL_ & TOPOLOGY_ have been set 
+    PM.rootTree();
 
     // Instantiate FiducialCuts, then pass to ProcessManager:
     FiducialCuts FC;
-
-    for (const auto& tag : config.getFiducialCuts()) { FC.addCut(tag); }
+    for (const auto& cut : config.value("fiducialCuts", std::vector<std::string>{})) {FC.addCut(cut);}
     PM.setFiducialCuts(FC);
 
     int MAX_EVENTS = 10000000;
-    int counter = 0;
-    while (chain.Next() && counter < MAX_EVENTS) { 
+    while (chain.Next() && PM.eventsProcessed() < MAX_EVENTS) { 
         PM.processEvent(*c12);
-        counter++;
+        if (PM.eventsProcessed() % 100000 == 0) std::cout << PM.eventsProcessed() << " events processed. \n";
     }
-    PM.finalize();
 
-    if (config.contains("writeSummary") && config.getBool("writeSummary")) config.writeSummary();
+    std::string outFile = config.value("outFile", PM.makeFilename());
+    PM.finalize(outFile);
 
     std::cout << "Processing complete." << std::endl;
     auto finish = std::chrono::high_resolution_clock::now();
