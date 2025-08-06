@@ -2,27 +2,23 @@
 #include <cmath>
 #include <algorithm> // std::max
 
-Kinematics::Kinematics(const TLorentzVector& e_f, double E_beam, double m_target) : 
-
-    e_f_(e_f), E_beam_(E_beam), m_target_(m_target) {
-
-        //std::cout << "Kinematics received e_f = " <<  e_f.Px() << ", " << e_f.Py() << ", " << e_f.Pz() << ", " << e_f.E() <<
-        //                                            ", E_beam = " << E_beam << ", m_target = " << m_target << std::endl;
-        beam_.SetPxPyPzE(0, 0, E_beam, E_beam);
+Kinematics::Kinematics(const TLorentzVector& e_f, double ebeam, double m_target) : 
+    
+    e_f_(e_f), ebeam_(ebeam), m_target_(m_target) {
+        beam_.SetPxPyPzE(0, 0, ebeam, ebeam);
         target_.SetPxPyPzE(0, 0, 0, m_target);
         computeDIS();
-        //std::cout << "Kinematics computeDIS() obtained Q2 = " << Q2() << ", Xb = " << Xb() << std::endl;
     }
 
 Kinematics::Kinematics(const TLorentzVector& e_f,
     const TLorentzVector& p_f,
     const TLorentzVector& pi0,
-    double E_beam,
+    double ebeam,
     double m_target) :
 
-    e_f_(e_f), p_f_(p_f), pi0_(pi0), E_beam_(E_beam), m_target_(m_target) {
+    e_f_(e_f), p_f_(p_f), pi0_(pi0), ebeam_(ebeam), m_target_(m_target) {
 
-        beam_.SetPxPyPzE(0, 0, E_beam, E_beam);
+        beam_.SetPxPyPzE(0, 0, ebeam, ebeam);
         target_.SetPxPyPzE(0, 0, 0, m_target);
         computeDIS();
         computeExclusivePi0();

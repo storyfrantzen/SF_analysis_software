@@ -2,6 +2,7 @@
 
 #include "FiducialCuts.h"  // Note: ProcessManager will have a member copy of the FC during filtering
 #include "Kinematics.h" // Note: ProcessManager will use kinematics class for computing derived quantities
+#include "nlohmann/json.hpp"
 #include "clas12reader.h"
 #include "TFile.h"
 #include "TTree.h"
@@ -11,9 +12,10 @@
 class ProcessManager {
 public:
 
+    ProcessManager(const nlohmann::json& config);
+
     // Setters defined here: //
-    void setChannel(const std::string channel) {channel_ = channel;}
-    void setTorus(const int torus) {torus_ = torus;}
+    
     void setTopology(const std::vector<std::string>& topology) {
     if (topology.size() != 2) {
         std::cerr << "[Warning] setTopology: Search for 2 elements was unsuccessful." << std::endl;
@@ -43,8 +45,6 @@ public:
     detPho_ = (pho == "FT") ? 0 : (pho == "FD") ? 1 : 2;
     detPro_ = (pro == "FD") ? 1 : 2;
 }
-    void setEbeam(const float Ebeam) {Ebeam_ = Ebeam;}
-    void setFiducialCuts(FiducialCuts& fiducialCuts) {fiducialCuts_ = &fiducialCuts;}
 
     // Getters defined here: //
     int eventsProcessed() {return eventsProcessed_;}
@@ -73,17 +73,17 @@ public:
 
 private:
 
+    nlohmann::json config_;
+
     int eventsProcessed_ = 0;
     int numFills_ = 0;
 
-    double Ebeam_;
+    double ebeam_;
     std::string channel_;
     int torus_;
     bool requireTopology_ = false;
 
-    FiducialCuts* fiducialCuts_ = nullptr;
-
-    TFile* outFile_ = nullptr;
+    FiducialCuts* FC_ = nullptr;
     TTree* tree_ = nullptr;
     
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

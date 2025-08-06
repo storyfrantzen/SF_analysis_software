@@ -35,15 +35,15 @@ private:
 
     // Each row = one parameter (Psplit, Tleft, Tright, ...)
     // Each column = sector 1 to 6 (index 0 to 5)
-    std::array<std::array<double, 6>, 9> rgkParams_;
+    std::array<std::array<double, 6>, 9> rgkEdgeParams_;
 
     // Fiducial flags here:
-    bool DCedgeCut_      = false;
-    bool FTstandardCut_  = false;
-    bool ECALrgaCut_     = false;
-    bool ECALrgkCut_     = false;
-    bool ECALrgkEdgeCut_ = false;
-    bool CVTrgaCut_      = false;
+    bool DCEdges_RGA_    = false;
+    bool FT_RGA_         = false;
+    bool ECAL_RGA_       = false;
+    bool ECAL_RGK_       = false;
+    bool ECALEdges_RGK_  = false;
+    bool CVT_RGA_        = false;
 };
 
 #endif

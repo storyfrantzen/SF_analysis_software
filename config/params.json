@@ -3,5 +3,5 @@
     "torus": 1,
     "channel": "eppi0",
     "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"]
-  }
+}
   

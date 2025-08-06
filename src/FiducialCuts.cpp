@@ -41,7 +41,7 @@ FiducialCuts::FiducialCuts() {
         
     };
 
-    rgkParams_ = {{
+    rgkEdgeParams_ = {{
         { 87,        82,        85,        77,        78,        82},       // Psplit
         { 58.7356,   62.8204,   62.2296,   53.7756,   58.2888,   54.5822},  // Tleft
         { 58.7477,   51.2589,   59.2357,   56.2415,   60.8219,   49.8914},  // Tright
@@ -57,24 +57,23 @@ FiducialCuts::FiducialCuts() {
 
 void FiducialCuts::addCut(const std::string& tag) {
     std::string cut = tag;
-    std::transform(cut.begin(), cut.end(), cut.begin(), ::tolower);
 
-    if (cut == "dcedgecut") DCedgeCut_ = true;
+    if (cut == "DCEdges_RGA") DCEdges_RGA_ = true;
 
-    else if (cut == "ftstandardcut") FTstandardCut_ = true;
+    else if (cut == "FT_RGA") FT_RGA_ = true;
 
-    else if (cut == "ecalrgacut") ECALrgaCut_ = true; 
+    else if (cut == "ECAL_RGA") ECAL_RGA_ = true; 
 
-    else if (cut == "ecalrgas19cut") {
+    else if (cut == "ECAL_RGAS19") {
         rgaExclusionMap_["1_2_v"].emplace_back(31.5, 49.5);
-        ECALrgaCut_ = true;
+        ECAL_RGA_ = true;
     }
 
-    else if (cut == "ecalrgkcut") ECALrgkCut_ = true;
+    else if (cut == "ECAL_RGK") ECAL_RGK_ = true;
 
-    else if (cut == "ecalrgkedgecut") ECALrgkEdgeCut_ = true;
+    else if (cut == "ECALEdges_RGK") ECALEdges_RGK_ = true;
 
-    else if (cut == "cvtrgacut") CVTrgaCut_ = true;
+    else if (cut == "CVT_RGA") CVT_RGA_ = true;
 
     else {
         std::cerr << "[FiducialCuts] Warning: Unrecognized cut tag '" << tag << ", " << cut << "'\n";
@@ -95,8 +94,8 @@ bool FiducialCuts::inFTHole(float x, float y) const {
 bool FiducialCuts::inExcludedECALRegion(int detector, int sector, char coord, double value) const {
     std::string key = std::to_string(detector) + "_" + std::to_string(sector) + "_" + coord;
     std::map<std::string, std::vector<std::pair<float, float>>> exclusionMap;
-    if (ECALrgaCut_) exclusionMap = rgaExclusionMap_;
-    else if (ECALrgkCut_) exclusionMap = rgkExclusionMap_;
+    if (ECAL_RGA_) exclusionMap = rgaExclusionMap_;
+    else if (ECAL_RGK_) exclusionMap = rgkExclusionMap_;
     auto it = exclusionMap.find(key);
     if (it != exclusionMap.end()) {
         for (const auto& range : it->second) {
@@ -124,7 +123,7 @@ std::pair<double, double> FiducialCuts::rotateToSector1Frame(double x, double y,
 }
 
 bool FiducialCuts::passesDC(clas12::region_particle* p, const int& torus) {
-    if (!DCedgeCut_ ) return true;
+    if (!DCEdges_RGA_ ) return true;
 
     int charge = p->par()->getCharge();
     // Might need to check, but this ensures particle-independent cut:
@@ -153,7 +152,7 @@ bool FiducialCuts::passesDC(clas12::region_particle* p, const int& torus) {
 }
 
 bool FiducialCuts::passesFT(clas12::region_particle* p) {
-    if (!FTstandardCut_) return true;
+    if (!FT_RGA_) return true;
 
     double x = p->ft(FTCAL)->getX();
     double y = p->ft(FTCAL)->getY();
@@ -167,7 +166,7 @@ bool FiducialCuts::passesFT(clas12::region_particle* p) {
 }
 
 bool FiducialCuts::passesECAL(clas12::region_particle* p) {
-    if (ECALrgaCut_ || ECALrgkCut_) {
+    if (ECAL_RGA_ || ECAL_RGK_) {
 
         int sector = p->cal(1) ? p->cal(1)->getSector() : -1;
         if (sector < 0) return false;
@@ -200,7 +199,7 @@ bool FiducialCuts::passesECAL(clas12::region_particle* p) {
             };
         }
     }
-    if (ECALrgkEdgeCut_) {
+    if (ECALEdges_RGK_) {
 
         int sector = p->cal(1) ? p->cal(1)->getSector() : 999;
         if (sector < 0) return false;
@@ -210,15 +209,15 @@ bool FiducialCuts::passesECAL(clas12::region_particle* p) {
 
         auto [x_local, y_local] = rotateToSector1Frame(x, y, sector);
 
-        int    pSplit = rgkParams_[0][sector - 1];
-        double tLeft  = rgkParams_[1][sector - 1];
-        double tRight = rgkParams_[2][sector - 1];
-        double sLeft  = rgkParams_[3][sector - 1];
-        double sRight = rgkParams_[4][sector - 1];
-        double rLeft  = rgkParams_[5][sector - 1];
-        double rRight = rgkParams_[6][sector - 1];
-        double qLeft  = rgkParams_[7][sector - 1];
-        double qRight = rgkParams_[8][sector - 1];
+        int    pSplit = rgkEdgeParams_[0][sector - 1];
+        double tLeft  = rgkEdgeParams_[1][sector - 1];
+        double tRight = rgkEdgeParams_[2][sector - 1];
+        double sLeft  = rgkEdgeParams_[3][sector - 1];
+        double sRight = rgkEdgeParams_[4][sector - 1];
+        double rLeft  = rgkEdgeParams_[5][sector - 1];
+        double rRight = rgkEdgeParams_[6][sector - 1];
+        double qLeft  = rgkEdgeParams_[7][sector - 1];
+        double qRight = rgkEdgeParams_[8][sector - 1];
 
         bool condition1 = x_local > pSplit && (y_local < sLeft * (x_local - tLeft)) && (y_local > sRight * (x_local - tRight));
         bool condition2 = x_local < pSplit && (y_local < qLeft * (x_local - rLeft)) && (y_local > qRight * (x_local - rRight));
@@ -230,7 +229,7 @@ bool FiducialCuts::passesECAL(clas12::region_particle* p) {
 
 bool FiducialCuts::passesCVT(clas12::region_particle* p) {
     //NEED TO CHECK...
-    if (CVTrgaCut_) {
+    if (CVT_RGA_) {
         // Define CVT layer IDs to check
         std::vector<int> layers = {1, 3, 5, 7, 12};
         for (int layer : layers) {
@@ -253,5 +252,5 @@ bool FiducialCuts::passesCVT(clas12::region_particle* p) {
         // RGA phi dead zones:
         if ((25 <= phi && phi <= 40) || (143 <= phi && phi <= 158) || (265 <= phi && phi <= 280)) return false;
     }
-    return true; // CVTrgaCut_ not enabled, automatically pass
+    return true; // CVT_RGA_ not enabled, automatically pass
 }

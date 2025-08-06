@@ -7,13 +7,13 @@
 class Kinematics {
 public:
     // DIS-only constructor which takes final electron `e_f`, default (6.535 GeV) beam, and default (proton) target
-    Kinematics(const TLorentzVector& e_f, double E_beam = 6.535, double m_target = PROTON_MASS);
+    Kinematics(const TLorentzVector& e_f, double ebeam = 6.535, double m_target = PROTON_MASS);
 
     // EPPI0-specific constructor for DIS + exclusivity analysis
     Kinematics(const TLorentzVector& e_f,
                const TLorentzVector& p_f,
                const TLorentzVector& pi0,
-               double E_beam = 6.535,
+               double ebeam = 6.535,
                double m_target = PROTON_MASS);
 
     // Accessors for DIS kinematics:
@@ -41,7 +41,7 @@ public:
 
 private:
 
-    double E_beam_, m_target_;
+    double ebeam_, m_target_;
 
     // Possible 4-vectors which appear in an event: 
     TLorentzVector beam_, target_, e_f_, p_f_, pi0_;

@@ -1,0 +1,58 @@
+{
+    "ebeam": {
+        "required": true,
+        "description": "Beam energy in GeV for the .hipo dataset to be processed",
+        "type": "double",
+        "units": "GeV"
+    },
+    "torus": {
+        "required": true,
+        "description": "Torus magnet polarity (+1 = negative outbending or -1 = negative inbending)",
+        "type": "int",
+        "options": [1, -1]
+    },
+    "channel": {
+        "required": true,
+        "description": "Physics channel to analyze",
+        "type": "string",
+        "options": {
+            "trigger": "Leading electron only. Modify PM event loop for specific use",
+            "gen": "Generated events only. Modify PM event loop for specific use",
+            "inclusive": "Accept all PID",
+            "inclusiveGEMC": "Accept all PID which satisfy GEN<->REC matching",
+            "eppi0": "Exclusive ep->e'p'pi0"
+        }
+    },
+    "fiducialCuts": {
+        "required": false,
+        "description": "Fiducial cuts applied to each event",
+        "type": "list of strings",
+        "options": {
+            "DCEdges_RGA": "",
+            "FT_RGA": "",
+            "ECAL_RGA": "",
+            "ECAL_RGAS19": "",
+            "ECAL_RGK": "",
+            "ECALEdges_RGK": "",
+            "CVT_RGA": ""
+        }
+    },
+    "isMC": {
+        "required": false,
+        "default": false,
+        "description": "Are events generated and/or simulated? If so, disable QA."
+    },
+    "qa": {
+        "required": false,
+        "description": "Quality assurance filters applied to each event",
+        "type": "list of strings",
+        "options": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"]
+    },
+    "outFile": {
+        "required": false,
+        "description": "ROOT output filename",
+        "type": "string"
+    }
+}
+
+  

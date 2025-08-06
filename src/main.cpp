@@ -104,6 +104,7 @@ int main(int argc, char** argv) {
     auto config_c12=chain.GetC12Reader();
     auto& c12=chain.C12ref();
 
+    // QA:
     if (!config.value("isMC", false)) {
         if (config_c12->qadb() != nullptr) {
             for (const auto& tag : config["qa"])
@@ -113,20 +114,10 @@ int main(int argc, char** argv) {
     }
 
     // Instantiate ProcessManager for workflow:
-    ProcessManager PM;
-
-    PM.setEbeam(config["ebeam"]);
-    PM.setTorus(config["torus"]);
-    PM.setChannel(config["channel"]);
-    //PM.setTpology(config["topology"].get<std::vector<std::string>>())
+    ProcessManager PM(config);
 
     // Initialize ROOT Tree. This function must be called after CHANNEL_ & TOPOLOGY_ have been set 
     PM.rootTree();
-
-    // Instantiate FiducialCuts, then pass to ProcessManager:
-    FiducialCuts FC;
-    for (const auto& cut : config.value("fiducialCuts", std::vector<std::string>{})) {FC.addCut(cut);}
-    PM.setFiducialCuts(FC);
 
     int MAX_EVENTS = 10000000;
     while (chain.Next() && PM.eventsProcessed() < MAX_EVENTS) { 

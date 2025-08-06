@@ -10,6 +10,16 @@
 
 using namespace clas12;
 
+ProcessManager::ProcessManager(const nlohmann::json& config)
+    : config_(config) {
+    // Use config_ here to initialize things
+    ebeam_   = config["ebeam"];
+    torus_   = config["torus"];
+    channel_ = config["channel"];
+
+    for (const auto& cut : config.value("fiducialCuts", std::vector<std::string>{})) {FC_->addCut(cut);}
+}
+
 //////////////////////////////////////////////////////////
 // Little helper functions called by bigger functions: ///
 //////////////////////////////////////////////////////////
@@ -24,7 +34,7 @@ std::string ProcessManager::currentTimestamp() const {
 
 std::string ProcessManager::makeFilename() const {
     std::stringstream ss;
-    ss << Ebeam_ << "_tor" << torus_ << "_" << channel_ << "_" << eventsProcessed_ << "_" << currentTimestamp() << ".root";
+    ss << ebeam_ << "_tor" << torus_ << "_" << channel_ << "_" << eventsProcessed_ << "_" << currentTimestamp() << ".root";
     return ss.str();
 }
 
@@ -244,7 +254,7 @@ void ProcessManager::fillRecVars(clas12::region_particle* p, int ele_info, int p
         // DIS calculations:
         double e_Ef = std::sqrt(ELECTRON_MASS * ELECTRON_MASS + p->getP() * p->getP());
         TLorentzVector scatteredElectron(p->par()->getPx(), p->par()->getPy(), p->par()->getPz(), e_Ef);
-        Kinematics DIS(scatteredElectron, Ebeam_, PROTON_MASS);
+        Kinematics DIS(scatteredElectron, ebeam_, PROTON_MASS);
         Q2_             = DIS.Q2();
         nu_             = DIS.nu();
         Xb_             = DIS.Xb();
@@ -361,16 +371,12 @@ void ProcessManager::fillEleVars(clas12::region_particle* ele, int info) {
         //DIS:
         double e_Ef = std::sqrt(ELECTRON_MASS * ELECTRON_MASS + ele->getP() * ele->getP());
         TLorentzVector scatteredElectron(ele->par()->getPx(), ele->par()->getPy(), ele->par()->getPz(), e_Ef);
-        // std::cout << "PM initializes e_f with px = " << scatteredElectron.Px() << ", py = " << scatteredElectron.Py() <<
-        //             ", pz = " << scatteredElectron.Pz() << ", E = " << scatteredElectron.E() << std::endl;
-        Kinematics DIS(scatteredElectron, Ebeam_, PROTON_MASS);
+        Kinematics DIS(scatteredElectron, ebeam_, PROTON_MASS);
         Q2_             = DIS.Q2();
         nu_             = DIS.nu();
         Xb_             = DIS.Xb();
         y_              = DIS.y();
         W_              = DIS.W();
-    
-        //std::cout << "PM about to fill Q2 = " << Q2_ << ", Xb_ = " << Xb_ << std::endl;
 
         e_xDC1_         = ele->traj(DC, 6)  ? ele->traj(DC, 6)->getX()  : NAN;
         e_yDC1_         = ele->traj(DC, 6)  ? ele->traj(DC, 6)->getY()  : NAN;
@@ -485,17 +491,17 @@ void ProcessManager::fillEPPI0Vars(Kinematics Kin) {
 
 // writes ROOT Tree to `outFile_` and frees up memory allocated to `tree_` and `outFile`. Called AFTER processing
 void ProcessManager::finalize(const std::string& output_file) {
-    outFile_ = new TFile(output_file.c_str(), "RECREATE");
-    if (outFile_) {
-        outFile_->cd();
+    TFile* outFile = new TFile(output_file.c_str(), "RECREATE");
+    if (outFile) {
+        outFile->cd();
         if (tree_) {
             tree_->Write();
             delete tree_;
             tree_ = nullptr;
         }
-        outFile_->Close();
-        delete outFile_;
-        outFile_ = nullptr;
+        outFile->Close();
+        delete outFile;
+        outFile = nullptr;
     } else if (tree_) {
         // Tree exists but no outfile? Just delete tree to avoid leaks.
         delete tree_;
@@ -511,8 +517,8 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
         if (electrons.size() < 1) return;
         auto& trigEle = electrons[0];
         int detP = getDetector(trigEle->par()->getStatus());
-        bool keepEle = ((detP == 0 && fiducialCuts_->passesFT(trigEle)) || 
-                                (detP == 1 && fiducialCuts_->passesDC(trigEle, torus_) && fiducialCuts_->passesECAL(trigEle)));
+        bool keepEle = ((detP == 0 && FC_->passesFT(trigEle)) || 
+                        (detP == 1 && FC_->passesDC(trigEle, torus_) && FC_->passesECAL(trigEle)));
         if (!keepEle) return;
 
         runNum_   = c12.runconfig()->getRun();
@@ -545,7 +551,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                 // DIS calculations:
                 double e_Ef_gen = std::sqrt(ELECTRON_MASS * ELECTRON_MASS + vec_gen_p.Mag() * vec_gen_p.Mag());
                 TLorentzVector scatteredGenElectron(mcParticles->getPx(j), mcParticles->getPy(j), mcParticles->getPz(j), e_Ef_gen);
-                Kinematics GEN_DIS(scatteredGenElectron, Ebeam_, PROTON_MASS);
+                Kinematics GEN_DIS(scatteredGenElectron, ebeam_, PROTON_MASS);
                 Q2_gen_  = GEN_DIS.Q2();
                 nu_gen_  = GEN_DIS.nu();
                 Xb_gen_  = GEN_DIS.Xb();
@@ -582,19 +588,19 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             int detP = getDetector(p->par()->getStatus());
 
             if (pid == 11) {
-                bool keepEle = ((detP == 0 && fiducialCuts_->passesFT(p)) || 
-                                (detP == 1 && fiducialCuts_->passesDC(p, torus_) && fiducialCuts_->passesECAL(p)));
+                bool keepEle = ((detP == 0 && FC_->passesFT(p)) || 
+                                (detP == 1 && FC_->passesDC(p, torus_) && FC_->passesECAL(p)));
                 if (!keepEle) return;
             } 
 
             else if (pid == 2212) {
-                bool keepPro = ((detP == 1 && fiducialCuts_->passesDC(p, torus_)) || 
-                                (detP == 2 && fiducialCuts_->passesCVT(p)));
+                bool keepPro = ((detP == 1 && FC_->passesDC(p, torus_)) || 
+                                (detP == 2 && FC_->passesCVT(p)));
                 if (!keepPro) return;
             }
 
             else if (pid == 22) {
-                bool keepPho = (detP == 0 && fiducialCuts_->passesFT(p)) || (detP == 1 && fiducialCuts_->passesECAL(p));
+                bool keepPho = (detP == 0 && FC_->passesFT(p)) || (detP == 1 && FC_->passesECAL(p));
                 if (!keepPho) return;
             }
 
@@ -649,8 +655,8 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             Q2_gen_ = nu_gen_ = Xb_gen_ = y_gen_ = W_gen_ = t_gen_ = NAN;
 
             if (gen_pid == 11) {
-                bool keepEle = passesVertexCut(p) && ((detP == 0 && fiducialCuts_->passesFT(p)) || 
-                                (detP == 1 && fiducialCuts_->passesDC(p, torus_) && fiducialCuts_->passesECAL(p)));
+                bool keepEle = passesVertexCut(p) && ((detP == 0 && FC_->passesFT(p)) || 
+                                (detP == 1 && FC_->passesDC(p, torus_) && FC_->passesECAL(p)));
                 if (!keepEle) return;
 
                 e_pgen_   = vec_gen_p.Mag();
@@ -658,7 +664,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                 // DIS calculations:
                 double e_Ef_gen = std::sqrt(ELECTRON_MASS * ELECTRON_MASS + vec_gen_p.Mag() * vec_gen_p.Mag());
                 TLorentzVector scatteredGenElectron(mcParticles->getPx(j), mcParticles->getPy(j), mcParticles->getPz(j), e_Ef_gen);
-                Kinematics GEN_DIS(scatteredGenElectron, Ebeam_, PROTON_MASS);
+                Kinematics GEN_DIS(scatteredGenElectron, ebeam_, PROTON_MASS);
                 Q2_gen_  = GEN_DIS.Q2();
                 nu_gen_  = GEN_DIS.nu();
                 Xb_gen_  = GEN_DIS.Xb();
@@ -667,8 +673,8 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             } 
 
             else if (gen_pid == 2212) {
-                bool keepPro = passesVertexCut(p) && ((detP == 1 && fiducialCuts_->passesDC(p, torus_)) || 
-                                (detP == 2 && fiducialCuts_->passesCVT(p)));
+                bool keepPro = passesVertexCut(p) && ((detP == 1 && FC_->passesDC(p, torus_)) || 
+                                (detP == 2 && FC_->passesCVT(p)));
                 if (!keepPro) return;
 
                 p_pgen_   = vec_gen_p.Mag();
@@ -681,7 +687,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             }
 
             else if (gen_pid == 22) {
-                bool keepPho = (detP == 0 && fiducialCuts_->passesFT(p)) || (detP == 1 && fiducialCuts_->passesECAL(p));
+                bool keepPho = (detP == 0 && FC_->passesFT(p)) || (detP == 1 && FC_->passesECAL(p));
                 if (!keepPho) return;
             }
 
@@ -762,8 +768,8 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
             int detEle = getDetector(ele->par()->getStatus());
             // Reject if electron fails fiducial cuts (ONLY if cuts are listed!)
-            if (detEle == 0 && !fiducialCuts_->passesFT(ele)) continue;
-            if (detEle == 1 && (!fiducialCuts_->passesDC(ele, torus_) || !fiducialCuts_->passesECAL(ele))) continue;
+            if (detEle == 0 && !FC_->passesFT(ele)) continue;
+            if (detEle == 1 && (!FC_->passesDC(ele, torus_) || !FC_->passesECAL(ele))) continue;
 
             for (const auto& prot : protons) {
 
@@ -775,8 +781,8 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                 if (requireTopology_ && detPro != detPro_) continue;
 
                 // Reject if proton fails fiducial cuts (ONLY if cuts are listed!)
-                if (detPro == 1 && !fiducialCuts_->passesDC(prot, torus_)) continue;
-                if (detPro == 2 && !fiducialCuts_->passesCVT(prot)) continue;
+                if (detPro == 1 && !FC_->passesDC(prot, torus_)) continue;
+                if (detPro == 2 && !FC_->passesCVT(prot)) continue;
 
                 for (size_t i = 0; i < photons.size(); ++i) {
                     for (size_t j = i + 1; j < photons.size(); ++j) {
@@ -800,10 +806,10 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                         if (requireTopology_ && (det1 != detPho_ || det2 != detPho_)) continue;
 
                         // Reject if either photon is detected in FT and fails FT fiducial cuts (fails ONLY if FTstandardCut is listed!)
-                        if ((det1 == 0 && !fiducialCuts_->passesFT(g1)) || (det2 == 0 && !fiducialCuts_->passesFT(g2))) continue;
+                        if ((det1 == 0 && !FC_->passesFT(g1)) || (det2 == 0 && !FC_->passesFT(g2))) continue;
 
                         //Reject if either photon is detected in FD and fails ECAL fiducial cuts (fails ONLY if ECAL cuts are listed!)
-                        if ((det1 == 1 && !fiducialCuts_->passesECAL(g1)) || (det2 == 1 && !fiducialCuts_->passesECAL(g2))) continue;
+                        if ((det1 == 1 && !FC_->passesECAL(g1)) || (det2 == 1 && !FC_->passesECAL(g2))) continue;
 
 
                         TLorentzVector lv_g1, lv_g2;
@@ -862,7 +868,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
         TLorentzVector finalProton(best_proton->par()->getPx(), best_proton->par()->getPy(),
             best_proton->par()->getPz(), p_Ef);
 
-        Kinematics EPPI0(scatteredElectron, finalProton, bestPi0, Ebeam_);
+        Kinematics EPPI0(scatteredElectron, finalProton, bestPi0, ebeam_);
 
         // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region
         if (!EPPI0.channelCheck()) return;
