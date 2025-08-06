@@ -79,7 +79,7 @@ private:
     double Ebeam_;
     std::string channel_;
     int torus_;
-    bool requireTopology_;
+    bool requireTopology_ = false;
 
     FiducialCuts* fiducialCuts_ = nullptr;
 

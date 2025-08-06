@@ -131,13 +131,14 @@ int main(int argc, char** argv) {
     int MAX_EVENTS = 10000000;
     while (chain.Next() && PM.eventsProcessed() < MAX_EVENTS) { 
         PM.processEvent(*c12);
-        if (PM.eventsProcessed() % 100000 == 0) std::cout << PM.eventsProcessed() << " events processed. \n";
+        if (PM.eventsProcessed() % 500000 == 0) std::cout << PM.eventsProcessed() << " events processed. \n";
     }
 
     std::string outFile = config.value("outFile", PM.makeFilename());
     PM.finalize(outFile);
 
-    std::cout << "Processing complete." << std::endl;
+    std::cout << "Processing complete. " << PM.eventsProcessed() << " events were processed, and " <<
+                    PM.numFills() << " tree fills were made." << std::endl;
     auto finish = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = finish - start;
     std::cout << "Elapsed time: " << elapsed.count() << " s" << std::endl;

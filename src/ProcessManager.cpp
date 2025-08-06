@@ -18,13 +18,13 @@ std::string ProcessManager::currentTimestamp() const {
     auto now = std::chrono::system_clock::now();
     std::time_t tt = std::chrono::system_clock::to_time_t(now);
     std::stringstream ss;
-    ss << std::put_time(std::localtime(&tt), "%Y%m%d_%H%M%S");
+    ss << std::put_time(std::localtime(&tt), "%y%m%d_%H%M");
     return ss.str();
 }
 
 std::string ProcessManager::makeFilename() const {
     std::stringstream ss;
-    ss << Ebeam_ << "_" << torus_ << "_" << channel_ << "_" << eventsProcessed_ << "_" << currentTimestamp() << ".root";
+    ss << Ebeam_ << "_tor" << torus_ << "_" << channel_ << "_" << eventsProcessed_ << "_" << currentTimestamp() << ".root";
     return ss.str();
 }
 
@@ -505,6 +505,7 @@ void ProcessManager::finalize(const std::string& output_file) {
 
 // MAIN WORKFLOW PERFORMED HERE:
 void ProcessManager::processEvent(clas12::clas12reader& c12) {
+    eventsProcessed_++;
     if (channel_ == "trigger") {
         auto electrons = c12.getByID(11);
         if (electrons.size() < 1) return;
@@ -804,6 +805,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                         //Reject if either photon is detected in FD and fails ECAL fiducial cuts (fails ONLY if ECAL cuts are listed!)
                         if ((det1 == 1 && !fiducialCuts_->passesECAL(g1)) || (det2 == 1 && !fiducialCuts_->passesECAL(g2))) continue;
 
+
                         TLorentzVector lv_g1, lv_g2;
                         lv_g1.SetXYZM(g1->par()->getPx(), g1->par()->getPy(), g1->par()->getPz(), 0.0);
                         lv_g2.SetXYZM(g2->par()->getPx(), g2->par()->getPy(), g2->par()->getPz(), 0.0);
@@ -869,10 +871,10 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
     
         deltaPhi_  = bestPi0.Phi() - EPPI0.lv_epX().Phi();
 
+        numFills_++;
+
         // FILL TREE, ONCE PER EVENT:
         tree_->Fill();
-        numFills_++;
     }
-    eventsProcessed_++;
 }
 
