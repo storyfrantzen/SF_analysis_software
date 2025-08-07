@@ -2,6 +2,6 @@
     "ebeam": 6.535,
     "torus": 1,
     "channel": "eppi0",
-    "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"]
+    "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
+    "maxEvents": 1e5
 }
-  

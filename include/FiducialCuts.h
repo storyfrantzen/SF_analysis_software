@@ -2,8 +2,6 @@
 #ifndef FIDUCIALCUTS_H
 #define FIDUCIALCUTS_H
 
-#include <array>
-
 #include <clas12reader.h>
 #include <region_particle.h>
 

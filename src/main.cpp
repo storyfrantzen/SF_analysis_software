@@ -1,20 +1,20 @@
 
 #include <iostream>
 #include <vector>
-#include <string>
-#include <cstring>    
+#include <string>   
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 
-#include "includes.h"
+#include "clas12reader.h"
+#include "HipoChain.h"
+#include "ProcessManager.h"
 
 #include "nlohmann/json.hpp"
-#include <fstream>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 using namespace std;
-
 
 struct ArgResults {
     std::vector<std::string> files;
@@ -119,8 +119,9 @@ int main(int argc, char** argv) {
     // Initialize ROOT Tree. This function must be called after CHANNEL_ & TOPOLOGY_ have been set 
     PM.rootTree();
 
-    int MAX_EVENTS = 10000000;
-    while (chain.Next() && PM.eventsProcessed() < MAX_EVENTS) { 
+    int maxEvents = config.value("maxEvents", -1);  // -1 means "no limit"
+    while (chain.Next()) { 
+        if (maxEvents > 0 && PM.eventsProcessed() >= maxEvents) break;
         PM.processEvent(*c12);
         if (PM.eventsProcessed() % 500000 == 0) std::cout << PM.eventsProcessed() << " events processed. \n";
     }

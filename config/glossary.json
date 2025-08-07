@@ -23,6 +23,9 @@
             "eppi0": "Exclusive ep->e'p'pi0"
         }
     },
+    "branches": {
+        "required": true
+    },
     "fiducialCuts": {
         "required": false,
         "description": "Fiducial cuts applied to each event",
@@ -47,6 +50,12 @@
         "description": "Quality assurance filters applied to each event",
         "type": "list of strings",
         "options": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"]
+    },
+    "maxEvents": {
+        "required": false,
+        "default": -1,
+        "description": "Optional max # events to process",
+        "type": "int"
     },
     "outFile": {
         "required": false,

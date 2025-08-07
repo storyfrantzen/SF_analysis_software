@@ -1,23 +1,36 @@
 #include "ProcessManager.h"
+
+#include "nlohmann/json.hpp"
+#include "FiducialCuts.h"  // Note: ProcessManager will have a member copy of the FC during filtering
 #include "Kinematics.h" // Note: ProcessManager will use kinematics class for computing derived quantities
-#include "TLorentzVector.h"
 #include "PhysicalConstants.h" // contains useful constants
-#include <cmath>
-#include <cstdint>  // for int8_t
-#include <iomanip>  // for std::put_time
-#include <sstream>  // for std::ostringstream
-#include <ctime>    // for std::time_t, std::localtime
+#include "clas12reader.h"
+#include "TFile.h"
+#include "TTree.h"
+#include "TLorentzVector.h"
 
 using namespace clas12;
 
-ProcessManager::ProcessManager(const nlohmann::json& config)
-    : config_(config) {
-    // Use config_ here to initialize things
+ProcessManager::ProcessManager(const nlohmann::json& config) {   
+
     ebeam_   = config["ebeam"];
     torus_   = config["torus"];
     channel_ = config["channel"];
 
     for (const auto& cut : config.value("fiducialCuts", std::vector<std::string>{})) {FC_->addCut(cut);}
+
+    registerAllBranchInfo();
+
+    auto& b = config["branches"];
+    for (const auto& var : b["electron"])
+        enabledBranches_.insert("e_" + var.get<std::string>());
+    for (const auto& var : b["proton"])
+        enabledBranches_.insert("p_" + var.get<std::string>());
+    for (const auto& var : b["photon"])
+        enabledBranches_.insert("g_" + var.get<std::string>());
+    
+    attachEnabledBranches(tree_);
+
 }
 
 //////////////////////////////////////////////////////////
@@ -46,17 +59,6 @@ bool ProcessManager::passesVertexCut(clas12::region_particle* p, const int zmin,
 // Currently not in use. RGK analysis note says 
 bool ProcessManager::passesDiagECALCut(clas12::region_particle* ele) {
     return true;
-}
-
-// Based on particle status, returns int representation of FT (0), FD (1), or CD (2)
-int ProcessManager::getDetector(int status) {
-    const int absStatus = std::abs(status);
-
-    if (absStatus >= 1000 && absStatus < 2000) return 0; // FT
-    if (absStatus >= 2000 && absStatus < 4000) return 1; // FD
-    if (absStatus >= 4000 && absStatus < 5000) return 2; // CD
-
-    return -999; // Unknown detector
 }
 
 //////////////////////////////////////////////////////////
@@ -741,146 +743,146 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
         }
 
     }
-    else if (channel_ == "eppi0") {
+    else if (channel_ == "eppi0") processEPPI0(c12);
+}
 
-        auto electrons = c12.getByID(11);   // PID 11 = electron
-        auto protons   = c12.getByID(2212); // PID 2212 = proton
-        auto photons   = c12.getByID(22);   // PID 22 = photon
+void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
+    auto electrons = c12.getByID(11);   // PID 11 = electron
+    auto protons   = c12.getByID(2212); // PID 2212 = proton
+    auto photons   = c12.getByID(22);   // PID 22 = photon
 
-        // Reject if not EPPI0 final state, according to eventbuilder:
-        if (photons.size() != 2 || electrons.size() != 1 || protons.size() != 1) return;
+    // Reject if not EPPI0 final state, according to eventbuilder:
+    if (photons.size() != 2 || electrons.size() != 1 || protons.size() != 1) return;
 
-        clas12::region_particle* best_electron = nullptr;
-        clas12::region_particle* best_proton   = nullptr;
-        clas12::region_particle* best_g1       = nullptr;
-        clas12::region_particle* best_g2       = nullptr;
-        
-        TLorentzVector bestPi0;
-        int detPi0;
+    clas12::region_particle* best_electron = nullptr;
+    clas12::region_particle* best_proton   = nullptr;
+    clas12::region_particle* best_g1       = nullptr;
+    clas12::region_particle* best_g2       = nullptr;
+    
+    TLorentzVector bestPi0;
+    int detPi0;
 
-        double  leastDeltaM = 999;
-        double  m_bestPi0 = 999;
+    double  leastDeltaM = 999;
+    double  m_bestPi0 = 999;
 
-        for (const auto& ele : electrons) {
+    for (const auto& ele : electrons) {
 
-            // Reject if electron vertex isn't in target fiducial volume
-            if (!passesVertexCut(ele)) continue;
+        // Reject if electron vertex isn't in target fiducial volume
+        if (!passesVertexCut(ele)) continue;
 
-            int detEle = getDetector(ele->par()->getStatus());
-            // Reject if electron fails fiducial cuts (ONLY if cuts are listed!)
-            if (detEle == 0 && !FC_->passesFT(ele)) continue;
-            if (detEle == 1 && (!FC_->passesDC(ele, torus_) || !FC_->passesECAL(ele))) continue;
+        int detEle = getDetector(ele->par()->getStatus());
+        // Reject if electron fails fiducial cuts (ONLY if cuts are listed!)
+        if (detEle == 0 && !FC_->passesFT(ele)) continue;
+        if (detEle == 1 && (!FC_->passesDC(ele, torus_) || !FC_->passesECAL(ele))) continue;
 
-            for (const auto& prot : protons) {
+        for (const auto& prot : protons) {
 
-                // Reject if proton vertex isn't in target fiducial volume
-                if (!passesVertexCut(prot)) continue;
+            // Reject if proton vertex isn't in target fiducial volume
+            if (!passesVertexCut(prot)) continue;
 
-                // Reject if topology has been specified (underscored private variables) && proton fails the topology
-                int detPro = getDetector(prot->par()->getStatus());
-                if (requireTopology_ && detPro != detPro_) continue;
+            // Reject if topology has been specified (underscored private variables) && proton fails the topology
+            int detPro = getDetector(prot->par()->getStatus());
+            if (requireTopology_ && detPro != detPro_) continue;
 
-                // Reject if proton fails fiducial cuts (ONLY if cuts are listed!)
-                if (detPro == 1 && !FC_->passesDC(prot, torus_)) continue;
-                if (detPro == 2 && !FC_->passesCVT(prot)) continue;
+            // Reject if proton fails fiducial cuts (ONLY if cuts are listed!)
+            if (detPro == 1 && !FC_->passesDC(prot, torus_)) continue;
+            if (detPro == 2 && !FC_->passesCVT(prot)) continue;
 
-                for (size_t i = 0; i < photons.size(); ++i) {
-                    for (size_t j = i + 1; j < photons.size(); ++j) {
+            for (size_t i = 0; i < photons.size(); ++i) {
+                for (size_t j = i + 1; j < photons.size(); ++j) {
 
-                        auto& g1 = photons[i];
-                        auto& g2 = photons[j];
+                    auto& g1 = photons[i];
+                    auto& g2 = photons[j];
 
-                        int det1 = getDetector(g1->par()->getStatus());
-                        int det2 = getDetector(g2->par()->getStatus());
+                    int det1 = getDetector(g1->par()->getStatus());
+                    int det2 = getDetector(g2->par()->getStatus());
 
-                        // Reject if either photon is detected in CD
-                        if (det1 == 2 || det2 == 2) continue;
+                    // Reject if either photon is detected in CD
+                    if (det1 == 2 || det2 == 2) continue;
 
-                        int sec1 = g1->getSector();
-                        int sec2 = g2->getSector();
+                    int sec1 = g1->getSector();
+                    int sec2 = g2->getSector();
 
-                        // Reject if photons are not detected in same sector
-                        if (sec1 != sec2) continue;
+                    // Reject if photons are not detected in same sector
+                    if (sec1 != sec2) continue;
 
-                        // Reject if topology has been specified && either photon fails the topology
-                        if (requireTopology_ && (det1 != detPho_ || det2 != detPho_)) continue;
+                    // Reject if topology has been specified && either photon fails the topology
+                    if (requireTopology_ && (det1 != detPho_ || det2 != detPho_)) continue;
 
-                        // Reject if either photon is detected in FT and fails FT fiducial cuts (fails ONLY if FTstandardCut is listed!)
-                        if ((det1 == 0 && !FC_->passesFT(g1)) || (det2 == 0 && !FC_->passesFT(g2))) continue;
+                    // Reject if either photon is detected in FT and fails FT fiducial cuts (fails ONLY if FTstandardCut is listed!)
+                    if ((det1 == 0 && !FC_->passesFT(g1)) || (det2 == 0 && !FC_->passesFT(g2))) continue;
 
-                        //Reject if either photon is detected in FD and fails ECAL fiducial cuts (fails ONLY if ECAL cuts are listed!)
-                        if ((det1 == 1 && !FC_->passesECAL(g1)) || (det2 == 1 && !FC_->passesECAL(g2))) continue;
+                    //Reject if either photon is detected in FD and fails ECAL fiducial cuts (fails ONLY if ECAL cuts are listed!)
+                    if ((det1 == 1 && !FC_->passesECAL(g1)) || (det2 == 1 && !FC_->passesECAL(g2))) continue;
 
 
-                        TLorentzVector lv_g1, lv_g2;
-                        lv_g1.SetXYZM(g1->par()->getPx(), g1->par()->getPy(), g1->par()->getPz(), 0.0);
-                        lv_g2.SetXYZM(g2->par()->getPx(), g2->par()->getPy(), g2->par()->getPz(), 0.0);
-                        TLorentzVector candidatePi0 = lv_g1 + lv_g2;
+                    TLorentzVector lv_g1, lv_g2;
+                    lv_g1.SetXYZM(g1->par()->getPx(), g1->par()->getPy(), g1->par()->getPz(), 0.0);
+                    lv_g2.SetXYZM(g2->par()->getPx(), g2->par()->getPy(), g2->par()->getPz(), 0.0);
+                    TLorentzVector candidatePi0 = lv_g1 + lv_g2;
 
-                        double deltaM = std::abs(candidatePi0.M() - PI0_MASS);
-                        if (deltaM > 0.025) continue;
+                    double deltaM = std::abs(candidatePi0.M() - PI0_MASS);
+                    if (deltaM > 0.025) continue;
 
-                        if (deltaM < leastDeltaM) {
-                            m_bestPi0      = candidatePi0.M();
-                            detPi0         = det1; // Assign to pi0 the detector of the photon
-                            leastDeltaM    = deltaM;
-                            bestPi0        = candidatePi0;
-                            best_electron  = ele;
-                            best_proton    = prot;
-                            best_g1        = g1;
-                            best_g2        = g2;
-                        }
+                    if (deltaM < leastDeltaM) {
+                        m_bestPi0      = candidatePi0.M();
+                        detPi0         = det1; // Assign to pi0 the detector of the photon
+                        leastDeltaM    = deltaM;
+                        bestPi0        = candidatePi0;
+                        best_electron  = ele;
+                        best_proton    = prot;
+                        best_g1        = g1;
+                        best_g2        = g2;
                     }
                 }
             }
         }
-
-        // Reject if no suitable EPPI0 candidate has been found, i.e., best_electron == nullptr:
-        if (!best_electron) return; 
-
-        runNum_         = c12.runconfig()->getRun();
-        eventNum_       = c12.runconfig()->getEvent();
-        helicity_       = c12.event()->getHelicity();
-
-        // ELECTRON INFO:
-        fillEleVars(best_electron);
-
-        // PROTON INFO:
-        fillProVars(best_proton);
-
-        // PHOTON INFO:
-        fillPhoVars(best_g1);
-
-        // PION INFO:
-        pi0_p_          = bestPi0.P();
-        pi0_theta_      = bestPi0.Theta();
-        pi0_phi_        = bestPi0.Phi();
-        m_gg_           = m_bestPi0;
-        detPi0_         = detPi0;
-
-        // DIS + EPPI0 INFO:
-        double e_Ef = std::sqrt(ELECTRON_MASS * ELECTRON_MASS + best_electron->getP() * best_electron->getP());
-        double p_Ef = std::sqrt(PROTON_MASS   * PROTON_MASS   + best_proton->getP()   * best_proton->getP());
-
-        TLorentzVector scatteredElectron(best_electron->par()->getPx(), best_electron->par()->getPy(), 
-            best_electron->par()->getPz(), e_Ef);
-
-        TLorentzVector finalProton(best_proton->par()->getPx(), best_proton->par()->getPy(),
-            best_proton->par()->getPz(), p_Ef);
-
-        Kinematics EPPI0(scatteredElectron, finalProton, bestPi0, ebeam_);
-
-        // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region
-        if (!EPPI0.channelCheck()) return;
-
-        fillEPPI0Vars(EPPI0);
-    
-        deltaPhi_  = bestPi0.Phi() - EPPI0.lv_epX().Phi();
-
-        numFills_++;
-
-        // FILL TREE, ONCE PER EVENT:
-        tree_->Fill();
     }
-}
 
+    // Reject if no suitable EPPI0 candidate has been found, i.e., best_electron == nullptr:
+    if (!best_electron) return; 
+
+    runNum_         = c12.runconfig()->getRun();
+    eventNum_       = c12.runconfig()->getEvent();
+    helicity_       = c12.event()->getHelicity();
+
+    // ELECTRON INFO:
+    fillEleVars(best_electron);
+
+    // PROTON INFO:
+    fillProVars(best_proton);
+
+    // PHOTON INFO:
+    fillPhoVars(best_g1);
+
+    // PION INFO:
+    pi0_p_          = bestPi0.P();
+    pi0_theta_      = bestPi0.Theta();
+    pi0_phi_        = bestPi0.Phi();
+    m_gg_           = m_bestPi0;
+    detPi0_         = detPi0;
+
+    // DIS + EPPI0 INFO:
+    double e_Ef = std::sqrt(ELECTRON_MASS * ELECTRON_MASS + best_electron->getP() * best_electron->getP());
+    double p_Ef = std::sqrt(PROTON_MASS   * PROTON_MASS   + best_proton->getP()   * best_proton->getP());
+
+    TLorentzVector scatteredElectron(best_electron->par()->getPx(), best_electron->par()->getPy(), 
+        best_electron->par()->getPz(), e_Ef);
+
+    TLorentzVector finalProton(best_proton->par()->getPx(), best_proton->par()->getPy(),
+        best_proton->par()->getPz(), p_Ef);
+
+    Kinematics EPPI0(scatteredElectron, finalProton, bestPi0, ebeam_);
+
+    // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region
+    if (!EPPI0.channelCheck()) return;
+
+    fillEPPI0Vars(EPPI0);
+
+    deltaPhi_  = bestPi0.Phi() - EPPI0.lv_epX().Phi();
+
+    numFills_++;
+
+    // FILL TREE, ONCE PER EVENT:
+    tree_->Fill();
+}

@@ -56,7 +56,6 @@ private:
     double phiT_;
     void computeExclusivePi0();
     
-
 };
 
 #endif
