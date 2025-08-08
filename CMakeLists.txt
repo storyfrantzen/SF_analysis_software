@@ -35,6 +35,15 @@ link_directories(
 # Collect all .cpp files from src/
 file(GLOB SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
 
+# List your header files that need dictionaries
+set(VARS_HEADERS ${PROJECT_SOURCE_DIR}/include/Vars.h)
+
+# Generate dictionary source file
+ROOT_GENERATE_DICTIONARY(G__VarsDict ${VARS_HEADERS} LINKDEF ${PROJECT_SOURCE_DIR}/include/VarsLinkDef.h)
+
+# Add generated dictionary source to your sources
+list(APPEND SOURCES ${CMAKE_CURRENT_BINARY_DIR}/G__VarsDict.cxx)
+
 # Executable
 add_executable(processHipoFiles ${SOURCES})
 

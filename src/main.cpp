@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
     ProcessManager PM(config);
 
     // Initialize ROOT Tree. This function must be called after CHANNEL_ & TOPOLOGY_ have been set 
-    PM.rootTree();
+    //PM.rootTree();
 
     int maxEvents = config.value("maxEvents", -1);  // -1 means "no limit"
     while (chain.Next()) { 

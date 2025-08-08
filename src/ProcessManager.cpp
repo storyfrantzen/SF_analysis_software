@@ -17,20 +17,45 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
     torus_   = config["torus"];
     channel_ = config["channel"];
 
+    FC_ = new FiducialCuts();
+
     for (const auto& cut : config.value("fiducialCuts", std::vector<std::string>{})) {FC_->addCut(cut);}
 
-    registerAllBranchInfo();
+    EventVars* evtPtr = &ev_;
+    RecVars* partPtr = &part_;
+    RecVars* ePtr = &e_;
+    RecVars* pPtr = &p_;
+    RecVars* gPtr = &g_;
+    GenVars* genPtr = &gen_;
+    DISVars* disPtr = &dis_;
+    EPPI0Vars* eppi0Ptr = &eppi0_;
 
-    auto& b = config["branches"];
-    for (const auto& var : b["electron"])
-        enabledBranches_.insert("e_" + var.get<std::string>());
-    for (const auto& var : b["proton"])
-        enabledBranches_.insert("p_" + var.get<std::string>());
-    for (const auto& var : b["photon"])
-        enabledBranches_.insert("g_" + var.get<std::string>());
-    
-    attachEnabledBranches(tree_);
+    tree_ = new TTree("Events", "CLAS12 event data");
+    tree_->SetAutoSave(0);
+    tree_->SetAutoFlush(5000);
 
+    tree_->Branch("ev", "EventVars", &evtPtr);
+
+    // registerKnownBranchInfo();
+
+    // if (config.contains("branches") && !config["branches"].is_null()) {
+    //     auto& b = config["branches"];
+    //     for (const auto& var : b.value("electron", std::vector<std::string>{}))
+    //         enabledBranches_.insert("e_" + var);
+    //     for (const auto& var : b.value("proton", std::vector<std::string>{}))
+    //         enabledBranches_.insert("p_" + var);
+    //     for (const auto& var : b.value("photon", std::vector<std::string>{}))
+    //         enabledBranches_.insert("g_" + var);
+    // } 
+    // else {
+    //     // Default: enable all branches
+    //     enabledBranches_.clear();
+    //     for (const auto& brInfo : masterBranchList_) {
+    //         enabledBranches_.insert(brInfo.name); // assuming BranchInfo has a 'name' string member
+    //     }
+    // }
+
+    // attachEnabledBranches(tree_);
 }
 
 //////////////////////////////////////////////////////////
@@ -884,5 +909,5 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
     numFills_++;
 
     // FILL TREE, ONCE PER EVENT:
-    tree_->Fill();
+    //tree_->Fill();
 }

@@ -123,6 +123,7 @@ std::pair<double, double> FiducialCuts::rotateToSector1Frame(double x, double y,
 }
 
 bool FiducialCuts::passesDC(clas12::region_particle* p, const int& torus) {
+
     if (!DCEdges_RGA_ ) return true;
 
     int charge = p->par()->getCharge();

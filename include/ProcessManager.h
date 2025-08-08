@@ -3,16 +3,20 @@
 #include "nlohmann/json.hpp"
 #include "FiducialCuts.h"  // Note: ProcessManager has its own FC object during filtering
 #include "Kinematics.h" // Note: ProcessManager will use kinematics class for computing derived quantities
+#include "Vars.h"
 #include "PhysicalConstants.h" // contains useful constants
 #include "clas12reader.h"
 #include "TFile.h"
 #include "TTree.h"
 #include "TLorentzVector.h"
+#include "TObject.h"
 #include <string>
 #include <cstdint>  // for int8_t
 #include <iomanip>  // for std::put_time
 #include <sstream>  // for std::ostringstream
 #include <ctime>    // for std::time_t, std::localtime
+
+using namespace clas12;
 
 class ProcessManager {
 public:
@@ -68,237 +72,240 @@ private:
     TTree* tree_ = nullptr;
 
     // UNDER CONSTRUCTION: //
-    struct GenVars {;};
-    struct RecVars {
-        double p, beta, theta, phi, vz, chi2pid; 
-        int pid, charge, status, det, sector;
 
-        void fill(clas12::region_particle* rec) {
-            p = rec->getP();
-            beta = rec->par()->getBeta();
-            theta = rec->getTheta();
-            phi = rec->getPhi();
-            vz = rec->par()->getVz();
-            chi2pid = rec->par()->getChi2Pid();
-
-            pid = rec->getPid();
-            charge = rec->par()->getCharge();
-            status = rec->par()->getStatus();
-            det = ProcessManager::getDetector(status);
-            sector = rec->getSector();
-        }
-    };
-    struct ElectronVars { double p = 0, theta = 0, phi = 0; };
-    struct ProtonVars   { double p = 0; };
-    struct PhotonVars   { double px = 0, py = 0, pz = 0; };
+    EventVars ev_;
+    RecVars part_;
+    RecVars e_;
+    RecVars p_;
+    RecVars g_;
+    GenVars gen_;
+    DISVars dis_;
+    EPPI0Vars eppi0_;
 
     struct BranchInfo {
-        std::string name;
-        void* address;
-        std::string type; // e.g., "D" for double
-    };
-
-    template <typename T>
-    void registerBranchInfo(std::vector<BranchInfo>& list, const std::string& name, T* address, const std::string& type) {
-        list.push_back({name, static_cast<void*>(address), type});
-    };
-    void registerAllBranchInfo() {
-        // Inclusive
-        registerBranchInfo(masterBranchList_, "p", &rec_.p, "D");
-        registerBranchInfo(masterBranchList_, "beta", &rec_.beta, "D");
-        registerBranchInfo(masterBranchList_, "theta", &rec_.theta, "D");
-        registerBranchInfo(masterBranchList_, "phi", &rec_.phi, "D");
-        registerBranchInfo(masterBranchList_, "vz", &rec_.vz, "D");
-        registerBranchInfo(masterBranchList_, "chi2pid", &rec_.chi2pid, "D");
-        registerBranchInfo(masterBranchList_, "pid", &rec_.pid, "I");
-        registerBranchInfo(masterBranchList_, "charge", &rec_.charge, "I");
-        registerBranchInfo(masterBranchList_, "status", &rec_.status, "I");
-        registerBranchInfo(masterBranchList_, "sector", &rec_.sector, "I");
-
-        // MC vars
-        registerBranchInfo(masterBranchList_, "e_pgen", &e_pgen_, "D");
-        registerBranchInfo(masterBranchList_, "p_pgen", &p_pgen_, "D");
-        registerBranchInfo(masterBranchList_, "g_pgen", &g_pgen_, "D");
-        registerBranchInfo(masterBranchList_, "Q2_gen", &Q2_gen_, "D");
-        registerBranchInfo(masterBranchList_, "nu_gen", &nu_gen_, "D");
-        registerBranchInfo(masterBranchList_, "Xb_gen", &Xb_gen_, "D");
-        registerBranchInfo(masterBranchList_, "y_gen", &y_gen_, "D");
-        registerBranchInfo(masterBranchList_, "W_gen", &W_gen_, "D");
-        registerBranchInfo(masterBranchList_, "t_gen", &t_gen_, "D");
-
-        // Electron
-        registerBranchInfo(masterBranchList_, "e_p", &e_p_, "D");
-        registerBranchInfo(masterBranchList_, "e_beta", &e_beta_, "D");
-        registerBranchInfo(masterBranchList_, "e_theta", &e_theta_, "D");
-        registerBranchInfo(masterBranchList_, "e_phi", &e_phi_, "D");
-        registerBranchInfo(masterBranchList_, "e_vz", &e_vz_, "D");
-        registerBranchInfo(masterBranchList_, "e_xFT", &e_xFT_, "D");
-        registerBranchInfo(masterBranchList_, "e_yFT", &e_yFT_, "D");
-        registerBranchInfo(masterBranchList_, "e_xDC1", &e_xDC1_, "D");
-        registerBranchInfo(masterBranchList_, "e_yDC1", &e_yDC1_, "D");
-        registerBranchInfo(masterBranchList_, "e_xDC2", &e_xDC2_, "D");
-        registerBranchInfo(masterBranchList_, "e_yDC2", &e_yDC2_, "D");
-        registerBranchInfo(masterBranchList_, "e_xDC3", &e_xDC3_, "D");
-        registerBranchInfo(masterBranchList_, "e_yDC3", &e_yDC3_, "D");
-        registerBranchInfo(masterBranchList_, "e_xPCAL", &e_xPCAL_, "D");
-        registerBranchInfo(masterBranchList_, "e_yPCAL", &e_yPCAL_, "D");
-        registerBranchInfo(masterBranchList_, "e_uPCAL", &e_uPCAL_, "D");
-        registerBranchInfo(masterBranchList_, "e_vPCAL", &e_vPCAL_, "D");
-        registerBranchInfo(masterBranchList_, "e_wPCAL", &e_wPCAL_, "D");
-        registerBranchInfo(masterBranchList_, "e_uECIN", &e_uECIN_, "D");
-        registerBranchInfo(masterBranchList_, "e_vECIN", &e_vECIN_, "D");
-        registerBranchInfo(masterBranchList_, "e_wECIN", &e_wECIN_, "D");
-        registerBranchInfo(masterBranchList_, "e_uECOUT", &e_uECOUT_, "D");
-        registerBranchInfo(masterBranchList_, "e_vECOUT", &e_vECOUT_, "D");
-        registerBranchInfo(masterBranchList_, "e_wECOUT", &e_wECOUT_, "D");
-        registerBranchInfo(masterBranchList_, "e_E_PCAL", &e_E_PCAL_, "D");
-        registerBranchInfo(masterBranchList_, "e_E_ECIN", &e_E_ECIN_, "D");
-        registerBranchInfo(masterBranchList_, "e_E_ECOUT", &e_E_ECOUT_, "D");
-        registerBranchInfo(masterBranchList_, "e_chi2pid", &e_chi2pid_, "D");
-        registerBranchInfo(masterBranchList_, "e_status", &e_status_, "I");
-        registerBranchInfo(masterBranchList_, "detEle", &detEle_, "I");
-        registerBranchInfo(masterBranchList_, "e_region", &e_region_, "I");
-        registerBranchInfo(masterBranchList_, "e_sector", &e_sector_, "I");
-        registerBranchInfo(masterBranchList_, "nphe", &nphe_, "I");
-
-        // Proton
-        registerBranchInfo(masterBranchList_, "p_p", &p_p_, "D");
-        registerBranchInfo(masterBranchList_, "p_beta", &p_beta_, "D");
-        registerBranchInfo(masterBranchList_, "p_theta", &p_theta_, "D");
-        registerBranchInfo(masterBranchList_, "p_phi", &p_phi_, "D");
-        registerBranchInfo(masterBranchList_, "p_vz", &p_vz_, "D");
-        registerBranchInfo(masterBranchList_, "p_xDC1", &p_xDC1_, "D");
-        registerBranchInfo(masterBranchList_, "p_yDC1", &p_yDC1_, "D");
-        registerBranchInfo(masterBranchList_, "p_xDC2", &p_xDC2_, "D");
-        registerBranchInfo(masterBranchList_, "p_yDC2", &p_yDC2_, "D");
-        registerBranchInfo(masterBranchList_, "p_xDC3", &p_xDC3_, "D");
-        registerBranchInfo(masterBranchList_, "p_yDC3", &p_yDC3_, "D");
-        registerBranchInfo(masterBranchList_, "p_chi2pid", &p_chi2pid_, "D");
-        registerBranchInfo(masterBranchList_, "p_status", &p_status_, "I");
-        registerBranchInfo(masterBranchList_, "detPro", &detPro_, "I");
-        registerBranchInfo(masterBranchList_, "p_sector", &p_sector_, "I");
-        registerBranchInfo(masterBranchList_, "p_edge_cvt1", &p_edge_cvt1_, "D");
-        registerBranchInfo(masterBranchList_, "p_edge_cvt3", &p_edge_cvt3_, "D");
-        registerBranchInfo(masterBranchList_, "p_edge_cvt5", &p_edge_cvt5_, "D");
-        registerBranchInfo(masterBranchList_, "p_edge_cvt7", &p_edge_cvt7_, "D");
-        registerBranchInfo(masterBranchList_, "p_edge_cvt12", &p_edge_cvt12_, "D");
-        registerBranchInfo(masterBranchList_, "p_theta_cvt", &p_theta_cvt_, "D");
-        registerBranchInfo(masterBranchList_, "p_phi_cvt", &p_phi_cvt_, "D");
-
-        // Photon
-        registerBranchInfo(masterBranchList_, "g_p", &g_p_, "D");
-        registerBranchInfo(masterBranchList_, "g_theta", &g_theta_, "D");
-        registerBranchInfo(masterBranchList_, "g_phi", &g_phi_, "D");
-        registerBranchInfo(masterBranchList_, "g_vz", &g_vz_, "D");
-        registerBranchInfo(masterBranchList_, "g_xPCAL", &g_xPCAL_, "D");
-        registerBranchInfo(masterBranchList_, "g_yPCAL", &g_yPCAL_, "D");
-        registerBranchInfo(masterBranchList_, "g_uPCAL", &g_uPCAL_, "D");
-        registerBranchInfo(masterBranchList_, "g_vPCAL", &g_vPCAL_, "D");
-        registerBranchInfo(masterBranchList_, "g_wPCAL", &g_wPCAL_, "D");
-        registerBranchInfo(masterBranchList_, "g_uECIN", &g_uECIN_, "D");
-        registerBranchInfo(masterBranchList_, "g_vECIN", &g_vECIN_, "D");
-        registerBranchInfo(masterBranchList_, "g_wECIN", &g_wECIN_, "D");
-        registerBranchInfo(masterBranchList_, "g_uECOUT", &g_uECOUT_, "D");
-        registerBranchInfo(masterBranchList_, "g_vECOUT", &g_vECOUT_, "D");
-        registerBranchInfo(masterBranchList_, "g_wECOUT", &g_wECOUT_, "D");
-        registerBranchInfo(masterBranchList_, "g_E_PCAL", &g_E_PCAL_, "D");
-        registerBranchInfo(masterBranchList_, "g_E_ECIN", &g_E_ECIN_, "D");
-        registerBranchInfo(masterBranchList_, "g_E_ECOUT", &g_E_ECOUT_, "D");
-        registerBranchInfo(masterBranchList_, "g_chi2pid", &g_chi2pid_, "D");
-        registerBranchInfo(masterBranchList_, "g_status", &g_status_, "I");
-        registerBranchInfo(masterBranchList_, "detPho", &detPho_, "I");
-        registerBranchInfo(masterBranchList_, "g_sector", &g_sector_, "I");
-
-        // Pi0
-        registerBranchInfo(masterBranchList_, "m_gg", &m_gg_, "D");
-        registerBranchInfo(masterBranchList_, "pi0_p", &pi0_p_, "D");
-        registerBranchInfo(masterBranchList_, "pi0_theta", &pi0_theta_, "D");
-        registerBranchInfo(masterBranchList_, "pi0_phi", &pi0_phi_, "D");
-        registerBranchInfo(masterBranchList_, "detPi0", &detPi0_, "I");
-
-        // Pi+
-        registerBranchInfo(masterBranchList_, "pip_p", &pip_p_, "D");
-        registerBranchInfo(masterBranchList_, "pip_theta", &pip_theta_, "D");
-        registerBranchInfo(masterBranchList_, "pip_phi", &pip_phi_, "D");
-        registerBranchInfo(masterBranchList_, "pip_xDC1", &pip_xDC1_, "D");
-        registerBranchInfo(masterBranchList_, "pip_yDC1", &pip_yDC1_, "D");
-        registerBranchInfo(masterBranchList_, "pip_xDC2", &pip_xDC2_, "D");
-        registerBranchInfo(masterBranchList_, "pip_yDC2", &pip_yDC2_, "D");
-        registerBranchInfo(masterBranchList_, "pip_xDC3", &pip_xDC3_, "D");
-        registerBranchInfo(masterBranchList_, "pip_yDC3", &pip_yDC3_, "D");
-        registerBranchInfo(masterBranchList_, "pip_E_PCAL", &pip_E_PCAL_, "D");
-        registerBranchInfo(masterBranchList_, "pip_E_ECIN", &pip_E_ECIN_, "D");
-        registerBranchInfo(masterBranchList_, "pip_E_ECOUT", &pip_E_ECOUT_, "D");
-        registerBranchInfo(masterBranchList_, "detPip", &detPip_, "I");
-        registerBranchInfo(masterBranchList_, "pip_sector", &pip_sector_, "I");
-
-        // Pi-
-        registerBranchInfo(masterBranchList_, "pim_p", &pim_p_, "D");
-        registerBranchInfo(masterBranchList_, "pim_theta", &pim_theta_, "D");
-        registerBranchInfo(masterBranchList_, "pim_phi", &pim_phi_, "D");
-        registerBranchInfo(masterBranchList_, "pim_xDC1", &pim_xDC1_, "D");
-        registerBranchInfo(masterBranchList_, "pim_yDC1", &pim_yDC1_, "D");
-        registerBranchInfo(masterBranchList_, "pim_xDC2", &pim_xDC2_, "D");
-        registerBranchInfo(masterBranchList_, "pim_yDC2", &pim_yDC2_, "D");
-        registerBranchInfo(masterBranchList_, "pim_xDC3", &pim_xDC3_, "D");
-        registerBranchInfo(masterBranchList_, "pim_yDC3", &pim_yDC3_, "D");
-        registerBranchInfo(masterBranchList_, "pim_E_PCAL", &pim_E_PCAL_, "D");
-        registerBranchInfo(masterBranchList_, "pim_E_ECIN", &pim_E_ECIN_, "D");
-        registerBranchInfo(masterBranchList_, "pim_E_ECOUT", &pim_E_ECOUT_, "D");
-        registerBranchInfo(masterBranchList_, "detPim", &detPim_, "I");
-        registerBranchInfo(masterBranchList_, "pim_sector", &pim_sector_, "I");
-
-        // Event info
-        registerBranchInfo(masterBranchList_, "runNum", &runNum_, "I");
-        registerBranchInfo(masterBranchList_, "eventNum", &eventNum_, "I");
-        registerBranchInfo(masterBranchList_, "helicity", &helicity_, "I");
-        registerBranchInfo(masterBranchList_, "numElectrons", &numElectrons_, "I");
-        registerBranchInfo(masterBranchList_, "numProtons", &numProtons_, "I");
-        registerBranchInfo(masterBranchList_, "numPhotons", &numPhotons_, "I");
-        registerBranchInfo(masterBranchList_, "numPip", &numPip_, "I");
-        registerBranchInfo(masterBranchList_, "numPim", &numPim_, "I");
-
-        // DIS
-        registerBranchInfo(masterBranchList_, "Q2", &Q2_, "D");
-        registerBranchInfo(masterBranchList_, "nu", &nu_, "D");
-        registerBranchInfo(masterBranchList_, "Xb", &Xb_, "D");
-        registerBranchInfo(masterBranchList_, "y", &y_, "D");
-        registerBranchInfo(masterBranchList_, "W", &W_, "D");
-
-        // Exclusivity
-        registerBranchInfo(masterBranchList_, "t", &t_, "D");
-        registerBranchInfo(masterBranchList_, "m2_miss", &m2_miss_, "D");
-        registerBranchInfo(masterBranchList_, "m2_epX", &m2_epX_, "D");
-        registerBranchInfo(masterBranchList_, "m2_epi0X", &m2_epi0X_, "D");
-        registerBranchInfo(masterBranchList_, "E_miss", &E_miss_, "D");
-        registerBranchInfo(masterBranchList_, "E2_miss", &E2_miss_, "D");
-        registerBranchInfo(masterBranchList_, "px_miss", &px_miss_, "D");
-        registerBranchInfo(masterBranchList_, "py_miss", &py_miss_, "D");
-        registerBranchInfo(masterBranchList_, "pz_miss", &pz_miss_, "D");
-        registerBranchInfo(masterBranchList_, "pT_miss", &pT_miss_, "D");
-        registerBranchInfo(masterBranchList_, "trentoPhi", &trentoPhi_, "D");
-        registerBranchInfo(masterBranchList_, "deltaPhi", &deltaPhi_, "D");
-
-    };
-    void attachEnabledBranches(TTree* tree) {
-        for (const auto& b : masterBranchList_) {
-            if (enabledBranches_.count(b.name)) {
-                tree->Branch(b.name.c_str(), b.address, (b.name + "/" + b.type).c_str());
-            }
-        }
-    };
-    
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// Variables to be stored in tree are declared here, linked to branches in rootTree(), and filled/updated in processEvent(): ///
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    RecVars rec_;
-    ElectronVars e_;
-    ProtonVars p_;
-    PhotonVars g_;
+    std::string name;          // e.g. "ev"
+    void* address;             // pointer to data
+    std::string classType;     // e.g. "EventVars" for TObject-derived structs; empty for primitives
+    std::string leafType;      // e.g. "I" or "D" for primitives; empty for TObject structs
+};
 
     std::vector<BranchInfo> masterBranchList_;
     std::unordered_set<std::string> enabledBranches_;
+
+    template <typename T>
+    void registerBranchInfo(std::vector<BranchInfo>& list, const std::string& name, T* address, const std::string& classType, const std::string& leafType) {
+        list.push_back({name, static_cast<void*>(address), classType, leafType});
+    };
+    void registerKnownBranchInfo() {
+
+        // TObject-derived structs: provide className, leave leafList empty
+        // masterBranchList_.push_back({"ev", ev_, "EventVars", ""});
+        // masterBranchList_.push_back({"part", part_, "RecVars", ""});
+        // masterBranchList_.push_back({"eppi0", eppi0_, "EPPI0Vars", ""});
+        // masterBranchList_.push_back({"dis", dis_, "DISVars", ""});
+
+        // Event info vars
+        // registerBranchInfo(masterBranchList_, "runNum",        &ev_.runNum,           "I");
+        // registerBranchInfo(masterBranchList_, "eventNum",      &ev_.eventNum,         "I");
+        // registerBranchInfo(masterBranchList_, "helicity",      &ev_.helicity,         "I");
+
+        // Reconstructed event vars (inclusive):
+        //tree_->Branch("part", &part_);
+        // registerBranchInfo(masterBranchList_, "pid",           &part_.pid,             "I");
+        // registerBranchInfo(masterBranchList_, "charge",        &part_.charge,          "I");
+        // registerBranchInfo(masterBranchList_, "status",        &part_.status,          "I");
+        // registerBranchInfo(masterBranchList_, "det",           &part_.det,             "I");
+        // registerBranchInfo(masterBranchList_, "sector",        &part_.sector,          "I");
+        // registerBranchInfo(masterBranchList_, "p",             &part_.p,               "D");
+        // registerBranchInfo(masterBranchList_, "beta",          &part_.beta,            "D");
+        // registerBranchInfo(masterBranchList_, "theta",         &part_.theta,           "D");
+        // registerBranchInfo(masterBranchList_, "phi",           &part_.phi,             "D");
+        // registerBranchInfo(masterBranchList_, "px",            &part_.px,              "D");
+        // registerBranchInfo(masterBranchList_, "py",            &part_.py,              "D");
+        // registerBranchInfo(masterBranchList_, "pz",            &part_.pz,              "D");
+        // registerBranchInfo(masterBranchList_, "vx",            &part_.vx,              "D");
+        // registerBranchInfo(masterBranchList_, "vy",            &part_.vy,              "D");
+        // registerBranchInfo(masterBranchList_, "vz",            &part_.vz,              "D");
+        // registerBranchInfo(masterBranchList_, "chi2pid",       &part_.chi2pid,         "D");
+        // registerBranchInfo(masterBranchList_, "time",          &part_.time,            "D");
+        // registerBranchInfo(masterBranchList_, "xFT",           &part_.xFT,             "D");
+        // registerBranchInfo(masterBranchList_, "yFT",           &part_.yFT,             "D");
+        // registerBranchInfo(masterBranchList_, "xDC1",          &part_.xDC1,            "D");
+        // registerBranchInfo(masterBranchList_, "yDC1",          &part_.yDC1,            "D");
+        // registerBranchInfo(masterBranchList_, "xDC2",          &part_.xDC2,            "D");
+        // registerBranchInfo(masterBranchList_, "yDC2",          &part_.yDC2,            "D");
+        // registerBranchInfo(masterBranchList_, "xDC3",          &part_.xDC3,            "D");
+        // registerBranchInfo(masterBranchList_, "yDC3",          &part_.yDC3,            "D");
+        // registerBranchInfo(masterBranchList_, "xPCAL",         &part_.xPCAL,           "D");
+        // registerBranchInfo(masterBranchList_, "yPCAL",         &part_.yPCAL,           "D");
+        // registerBranchInfo(masterBranchList_, "uPCAL",         &part_.uPCAL,           "D");
+        // registerBranchInfo(masterBranchList_, "vPCAL",         &part_.vPCAL,           "D");
+        // registerBranchInfo(masterBranchList_, "wPCAL",         &part_.wPCAL,           "D");
+        // registerBranchInfo(masterBranchList_, "uECIN",         &part_.uECIN,           "D");
+        // registerBranchInfo(masterBranchList_, "vECIN",         &part_.vECIN,           "D");
+        // registerBranchInfo(masterBranchList_, "wECIN",         &part_.wECIN,           "D");
+        // registerBranchInfo(masterBranchList_, "uECOUT",        &part_.uECOUT,          "D");
+        // registerBranchInfo(masterBranchList_, "vECOUT",        &part_.vECOUT,          "D");
+        // registerBranchInfo(masterBranchList_, "wECOUT",        &part_.wECOUT,          "D");
+        // registerBranchInfo(masterBranchList_, "E_PCAL",        &part_.E_PCAL,          "D");
+        // registerBranchInfo(masterBranchList_, "E_ECIN",        &part_.E_ECIN,          "D");
+        // registerBranchInfo(masterBranchList_, "E_ECOUT",       &part_.E_ECOUT,         "D");
+        // registerBranchInfo(masterBranchList_, "edge_cvt1",     &part_.edge_cvt1,       "D");
+        // registerBranchInfo(masterBranchList_, "edge_cvt3",     &part_.edge_cvt3,       "D");
+        // registerBranchInfo(masterBranchList_, "edge_cvt5",     &part_.edge_cvt5,       "D");
+        // registerBranchInfo(masterBranchList_, "edge_cvt7",     &part_.edge_cvt7,       "D");
+        // registerBranchInfo(masterBranchList_, "edge_cvt12",    &part_.edge_cvt12,      "D");
+        // registerBranchInfo(masterBranchList_, "theta_cvt",     &part_.theta_cvt,       "D");
+        // registerBranchInfo(masterBranchList_, "phi_cvt",       &part_.phi_cvt,         "D");
+
+
+        // Generated event vars:
+
+        // registerBranchInfo(masterBranchList_, "gen_pid",       &gen_.pid,              "I");
+        // registerBranchInfo(masterBranchList_, "gen_p",         &gen_.p,                "D");
+        // registerBranchInfo(masterBranchList_, "gen_theta",     &gen_.theta,            "D");
+        // registerBranchInfo(masterBranchList_, "gen_phi",       &gen_.phi,              "D");
+        // registerBranchInfo(masterBranchList_, "gen_Q2",        &gen_.Q2,               "D");
+        // registerBranchInfo(masterBranchList_, "gen_nu",        &gen_.nu,               "D");
+        // registerBranchInfo(masterBranchList_, "gen_Xb",        &gen_.Xb,               "D");
+        // registerBranchInfo(masterBranchList_, "gen_y",         &gen_.y,                "D");
+        // registerBranchInfo(masterBranchList_, "gen_W",         &gen_.W,                "D");
+        // registerBranchInfo(masterBranchList_, "gen_t",         &gen_.t,                "D");
+
+        // Electron particle vars:
+        // registerBranchInfo(masterBranchList_, "e_p",           &e_.p,                 "D");
+        // registerBranchInfo(masterBranchList_, "e_beta",        &e_.beta,              "D");
+        // registerBranchInfo(masterBranchList_, "e_theta",       &e_.theta,             "D");
+        // registerBranchInfo(masterBranchList_, "e_phi",         &e_.phi,               "D");
+        // registerBranchInfo(masterBranchList_, "e_vz",          &e_.vz,                "D");
+        // registerBranchInfo(masterBranchList_, "e_xFT",         &e_.xFT,               "D");
+        // registerBranchInfo(masterBranchList_, "e_yFT",         &e_.yFT,               "D");
+        // registerBranchInfo(masterBranchList_, "e_xDC1",        &e_.xDC1,              "D");
+        // registerBranchInfo(masterBranchList_, "e_yDC1",        &e_.yDC1,              "D");
+        // registerBranchInfo(masterBranchList_, "e_xDC2",        &e_.xDC2,              "D");
+        // registerBranchInfo(masterBranchList_, "e_yDC2",        &e_.yDC2,              "D");
+        // registerBranchInfo(masterBranchList_, "e_xDC3",        &e_.xDC3,              "D");
+        // registerBranchInfo(masterBranchList_, "e_yDC3",        &e_.yDC3,              "D");
+        // registerBranchInfo(masterBranchList_, "e_xPCAL",       &e_.xPCAL,             "D");
+        // registerBranchInfo(masterBranchList_, "e_yPCAL",       &e_.yPCAL,             "D");
+        // registerBranchInfo(masterBranchList_, "e_uPCAL",       &e_.uPCAL,             "D");
+        // registerBranchInfo(masterBranchList_, "e_vPCAL",       &e_.vPCAL,             "D");
+        // registerBranchInfo(masterBranchList_, "e_wPCAL",       &e_.wPCAL,             "D");
+        // registerBranchInfo(masterBranchList_, "e_uECIN",       &e_.uECIN,             "D");
+        // registerBranchInfo(masterBranchList_, "e_vECIN",       &e_.vECIN,             "D");
+        // registerBranchInfo(masterBranchList_, "e_wECIN",       &e_.wECIN,             "D");
+        // registerBranchInfo(masterBranchList_, "e_uECOUT",      &e_.uECOUT,            "D");
+        // registerBranchInfo(masterBranchList_, "e_vECOUT",      &e_.vECOUT,            "D");
+        // registerBranchInfo(masterBranchList_, "e_wECOUT",      &e_.wECOUT,            "D");
+        // registerBranchInfo(masterBranchList_, "e_E_PCAL",      &e_.E_PCAL,            "D");
+        // registerBranchInfo(masterBranchList_, "e_E_ECIN",      &e_.E_ECIN,            "D");
+        // registerBranchInfo(masterBranchList_, "e_E_ECOUT",     &e_.E_ECOUT,           "D");
+        // registerBranchInfo(masterBranchList_, "e_chi2pid",     &e_.chi2pid,           "D");
+        // registerBranchInfo(masterBranchList_, "e_status",      &e_.status,            "I");
+        // registerBranchInfo(masterBranchList_, "detEle",        &e_.det,               "I");
+        // registerBranchInfo(masterBranchList_, "e_sector",      &e_.sector,            "I");
+
+        // // Proton particle vars:
+        // registerBranchInfo(masterBranchList_, "p_p",           &p_.p,                 "D");
+        // registerBranchInfo(masterBranchList_, "p_beta",        &p_.beta,              "D");
+        // registerBranchInfo(masterBranchList_, "p_theta",       &p_.theta,             "D");
+        // registerBranchInfo(masterBranchList_, "p_phi",         &p_.phi,               "D");
+        // registerBranchInfo(masterBranchList_, "p_vz",          &p_.vz,                "D");
+        // registerBranchInfo(masterBranchList_, "p_xDC1",        &p_.xDC1,              "D");
+        // registerBranchInfo(masterBranchList_, "p_yDC1",        &p_.yDC1,              "D");
+        // registerBranchInfo(masterBranchList_, "p_xDC2",        &p_.xDC2,              "D");
+        // registerBranchInfo(masterBranchList_, "p_yDC2",        &p_.yDC2,              "D");
+        // registerBranchInfo(masterBranchList_, "p_xDC3",        &p_.xDC3,              "D");
+        // registerBranchInfo(masterBranchList_, "p_yDC3",        &p_.yDC3,              "D");
+        // registerBranchInfo(masterBranchList_, "p_chi2pid",     &p_.chi2pid,           "D");
+        // registerBranchInfo(masterBranchList_, "p_edge_cvt1",   &p_.edge_cvt1,         "D");
+        // registerBranchInfo(masterBranchList_, "p_edge_cvt3",   &p_.edge_cvt3,         "D");
+        // registerBranchInfo(masterBranchList_, "p_edge_cvt5",   &p_.edge_cvt5,         "D");
+        // registerBranchInfo(masterBranchList_, "p_edge_cvt7",   &p_.edge_cvt7,         "D");
+        // registerBranchInfo(masterBranchList_, "p_edge_cvt12",  &p_.edge_cvt12,        "D");
+        // registerBranchInfo(masterBranchList_, "p_theta_cvt",   &p_.theta_cvt,         "D");
+        // registerBranchInfo(masterBranchList_, "p_phi_cvt",     &p_.phi_cvt,           "D");
+        // registerBranchInfo(masterBranchList_, "p_status",      &p_.status,            "I");
+        // registerBranchInfo(masterBranchList_, "detPro",        &p_.det,               "I");
+        // registerBranchInfo(masterBranchList_, "p_sector",      &p_.sector,            "I");
+
+        // // Photon particle vars:
+        // registerBranchInfo(masterBranchList_, "g_p",           &g_.p,                 "D");
+        // registerBranchInfo(masterBranchList_, "g_theta",       &g_.theta,             "D");
+        // registerBranchInfo(masterBranchList_, "g_phi",         &g_.phi,               "D");
+        // registerBranchInfo(masterBranchList_, "g_vz",          &g_.vz,                "D");
+        // registerBranchInfo(masterBranchList_, "g_xFT",         &g_.xFT,               "D");
+        // registerBranchInfo(masterBranchList_, "g_yFT",         &g_.yFT,               "D");
+        // registerBranchInfo(masterBranchList_, "g_xPCAL",       &g_.xPCAL,             "D");
+        // registerBranchInfo(masterBranchList_, "g_yPCAL",       &g_.yPCAL,             "D");
+        // registerBranchInfo(masterBranchList_, "g_uPCAL",       &g_.uPCAL,             "D");
+        // registerBranchInfo(masterBranchList_, "g_vPCAL",       &g_.vPCAL,             "D");
+        // registerBranchInfo(masterBranchList_, "g_wPCAL",       &g_.wPCAL,             "D");
+        // registerBranchInfo(masterBranchList_, "g_uECIN",       &g_.uECIN,             "D");
+        // registerBranchInfo(masterBranchList_, "g_vECIN",       &g_.vECIN,             "D");
+        // registerBranchInfo(masterBranchList_, "g_wECIN",       &g_.wECIN,             "D");
+        // registerBranchInfo(masterBranchList_, "g_uECOUT",      &g_.uECOUT,            "D");
+        // registerBranchInfo(masterBranchList_, "g_vECOUT",      &g_.vECOUT,            "D");
+        // registerBranchInfo(masterBranchList_, "g_wECOUT",      &g_.wECOUT,            "D");
+        // registerBranchInfo(masterBranchList_, "g_E_PCAL",      &g_.E_PCAL,            "D");
+        // registerBranchInfo(masterBranchList_, "g_E_ECIN",      &g_.E_ECIN,            "D");
+        // registerBranchInfo(masterBranchList_, "g_E_ECOUT",     &g_.E_ECOUT,           "D");
+        // registerBranchInfo(masterBranchList_, "g_chi2pid",     &g_.chi2pid,           "D");
+        // registerBranchInfo(masterBranchList_, "g_status",      &g_.status,            "I");
+        // registerBranchInfo(masterBranchList_, "detPho",        &g_.det,               "I");
+        // registerBranchInfo(masterBranchList_, "g_sector",      &g_.sector,            "I");
+
+        // Pi0 & exclusivity vars:
+        // registerBranchInfo(masterBranchList_, "m_gg",          &eppi0_.m_gg,          "D");
+        // registerBranchInfo(masterBranchList_, "pi0_p",         &eppi0_.pi0_p,         "D");
+        // registerBranchInfo(masterBranchList_, "pi0_theta",     &eppi0_.pi0_theta,     "D");
+        // registerBranchInfo(masterBranchList_, "pi0_phi",       &eppi0_.pi0_phi,       "D");
+        // registerBranchInfo(masterBranchList_, "t",             &eppi0_.t,             "D");
+        // registerBranchInfo(masterBranchList_, "m2_miss",       &eppi0_.m2_miss,       "D");
+        // registerBranchInfo(masterBranchList_, "m2_epX",        &eppi0_.m2_epX,        "D");
+        // registerBranchInfo(masterBranchList_, "m2_epi0X",      &eppi0_.m2_epi0X,      "D");
+        // registerBranchInfo(masterBranchList_, "E_miss",        &eppi0_.E_miss,        "D");
+        // registerBranchInfo(masterBranchList_, "px_miss",       &eppi0_.px_miss,       "D");
+        // registerBranchInfo(masterBranchList_, "py_miss",       &eppi0_.py_miss,       "D");
+        // registerBranchInfo(masterBranchList_, "pz_miss",       &eppi0_.pz_miss,       "D");
+        // registerBranchInfo(masterBranchList_, "pT_miss",       &eppi0_.pT_miss,       "D");
+        // registerBranchInfo(masterBranchList_, "trentoPhi",     &eppi0_.trentoPhi,     "D");
+        // registerBranchInfo(masterBranchList_, "detPi0",        &eppi0_.detPi0,        "I");
+        // registerBranchInfo(masterBranchList_, "numElectrons",  &eppi0_.numElectrons,  "I");
+        // registerBranchInfo(masterBranchList_, "numProtons",    &eppi0_.numProtons,    "I");
+        // registerBranchInfo(masterBranchList_, "numPhotons",    &eppi0_.numPhotons,    "I");
+
+        // DIS vars
+        // registerBranchInfo(masterBranchList_, "Q2",            &dis_.Q2,               "D");
+        // registerBranchInfo(masterBranchList_, "nu",            &dis_.nu,               "D");
+        // registerBranchInfo(masterBranchList_, "Xb",            &dis_.Xb,               "D");
+        // registerBranchInfo(masterBranchList_, "y",             &dis_.y,                "D");
+        // registerBranchInfo(masterBranchList_, "W",             &dis_.W,                "D");
+
+    };
+    void attachEnabledBranches(TTree* tree) {
+        for (const auto& brInfo : masterBranchList_) {
+            if (enabledBranches_.count(brInfo.name)) {
+                if (!brInfo.classType.empty()) {
+                    // TObject-derived struct
+                    tree->Branch(brInfo.name.c_str(), brInfo.classType.c_str(), brInfo.address);
+                } else if (!brInfo.leafType.empty()) {
+                    // Primitive data type
+                    std::string branchDef = brInfo.name + "/" + brInfo.leafType;
+                    tree->Branch(brInfo.name.c_str(), brInfo.address, branchDef.c_str());
+                } else {
+                    // Unexpected case: no classType and no leafType
+                    // Handle error or warning as needed
+                    std::cerr << "Warning: Branch Info " << brInfo.name << " has no className or leafList." << std::endl;
+                }
+            }
+        }
+    }
+
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// Variables to be stored in tree are declared here, linked to branches in rootTree(), and filled/updated in processEvent(): ///
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Inclusive:
     double   chi2pid_;
@@ -336,20 +343,9 @@ private:
     double   m_gg_, pi0_p_, pi0_theta_, pi0_phi_; // pi0 quantities gotten from photon pair
     int      detPi0_;
 
-    // Pi +/-:
-    double   pip_p_, pip_theta_, pip_phi_;
-    double   pip_xDC1_, pip_yDC1_, pip_xDC2_, pip_yDC2_, pip_xDC3_, pip_yDC3_;
-    double   pip_E_PCAL_, pip_E_ECIN_, pip_E_ECOUT_;
-    int      detPip_, pip_sector_;
-
-    double   pim_p_, pim_theta_, pim_phi_;
-    double   pim_xDC1_, pim_yDC1_, pim_xDC2_, pim_yDC2_, pim_xDC3_, pim_yDC3_;
-    double   pim_E_PCAL_, pim_E_ECIN_, pim_E_ECOUT_;
-    int      detPim_, pim_sector_;
-
     // Event information to store:
     int      runNum_, eventNum_, helicity_;
-    int      numElectrons_, numProtons_, numPhotons_, numPip_, numPim_;
+    int      numElectrons_, numProtons_, numPhotons_;
     
     // DIS quantities:
     double   Q2_, nu_, Xb_, y_, W_;
