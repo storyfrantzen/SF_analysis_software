@@ -16,15 +16,11 @@
         "description": "Physics channel to analyze",
         "type": "string",
         "options": {
-            "trigger": "Leading electron only. Modify PM event loop for specific use",
-            "gen": "Generated events only. Modify PM event loop for specific use",
-            "inclusive": "Accept all PID",
-            "inclusiveGEMC": "Accept all PID which satisfy GEN<->REC matching",
+            "aaoGenOnly": "Generated events only",
+            "inclusiveRec": "Accept all PID",
+            "aaoGenMatch": "Accept all PID which satisfy GEN<->REC matching",
             "eppi0": "Exclusive ep->e'p'pi0"
         }
-    },
-    "branches": {
-        "required": true
     },
     "fiducialCuts": {
         "required": false,
@@ -45,6 +41,26 @@
         "default": false,
         "description": "Are events generated and/or simulated? If so, disable QA."
     },
+    "branches": {
+        "required": false,
+        "description": "Supplemental ROOT TTree branches to load for different particle categories.",
+        "type": "list of str particle categories : list of branch names",
+        "default": "Only essential branches are filled. See 'Vars.h' for supplemental branch options",
+        "keys": {
+            "event": "Event-level branches",
+            "rec": "Reconstructed particle branches",
+            "electron": "Electron-specific branches. Same branch options as rec",
+            "proton": "Proton-specific branches. Same branch options as rec",
+            "photon": "Photon-specific branches. Same branch options as rec"
+        },
+        "examples showcasing supplemental branches": {
+            "event": ["numElectrons", "numProtons", "numPhotons"],
+            "rec": ["px", "time", "yFT", "uPCAL", "theta_cvt"],
+            "electron": ["xDC1", "E_PCAL", "wECOUT"],
+            "proton": ["edge_cvt1", "yDC3", "phi_cvt"],
+            "photon": ["xFT", "E_ECIN", "vz"]
+        }
+    },
     "qa": {
         "required": false,
         "description": "Quality assurance filters applied to each event",
@@ -57,9 +73,9 @@
         "description": "Optional max # events to process",
         "type": "int"
     },
-    "outFile": {
+    "outPrefix": {
         "required": false,
-        "description": "ROOT output filename",
+        "description": "optioal prefix for ROOT output filename",
         "type": "string"
     }
 }

@@ -2,7 +2,6 @@
     "C_Cpp.errorSquiggles": "disabled",
     "files.associations": {
         "string_view": "cpp",
-        "plot_DC_xy.C": "cpp",
         "array": "cpp",
         "atomic": "cpp",
         "bit": "cpp",
@@ -67,6 +66,7 @@
         "EPPI0plots.C": "cpp",
         "acceptancePlots.C": "cpp",
         "MCstudyPlots.C": "cpp",
-        "analyzeBSA_OLD.C": "cpp"
+        "analyzeBSA_OLD.C": "cpp",
+        "unordered_set": "cpp"
     }
 }

@@ -1,7 +1,7 @@
 {
     "ebeam": 6.535,
     "torus": 1,
-    "channel": "eppi0",
+    "channel": "aaoGenOnly",
     "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
-    "maxEvents": 1e5
+    "isMC": true
 }

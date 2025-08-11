@@ -107,17 +107,17 @@ int main(int argc, char** argv) {
     // QA:
     if (!config.value("isMC", false)) {
         if (config_c12->qadb() != nullptr) {
-            for (const auto& tag : config["qa"])
+            for (const auto& tag : config.value("qa", std::vector<std::string>{})) {
                 config_c12->db()->qadb_addQARequirement(tag);
-            config_c12->applyQA();
+            }
+            if (!config.value("qa", std::vector<std::string>{}).empty()) {
+                config_c12->applyQA();
+            }
         }
     }
 
     // Instantiate ProcessManager for workflow:
     ProcessManager PM(config);
-
-    // Initialize ROOT Tree. This function must be called after CHANNEL_ & TOPOLOGY_ have been set 
-    //PM.rootTree();
 
     int maxEvents = config.value("maxEvents", -1);  // -1 means "no limit"
     while (chain.Next()) { 
@@ -126,8 +126,7 @@ int main(int argc, char** argv) {
         if (PM.eventsProcessed() % 500000 == 0) std::cout << PM.eventsProcessed() << " events processed. \n";
     }
 
-    std::string outFile = config.value("outFile", PM.makeFilename());
-    PM.finalize(outFile);
+    PM.finalize();
 
     std::cout << "Processing complete. " << PM.eventsProcessed() << " events were processed, and " <<
                     PM.numFills() << " tree fills were made." << std::endl;

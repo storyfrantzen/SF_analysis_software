@@ -36,13 +36,26 @@ link_directories(
 file(GLOB SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
 
 # List your header files that need dictionaries
-set(VARS_HEADERS ${PROJECT_SOURCE_DIR}/include/Vars.h)
+set(BRANCHVARS_HEADERS ${PROJECT_SOURCE_DIR}/include/BranchVars.h)
 
 # Generate dictionary source file
-ROOT_GENERATE_DICTIONARY(G__VarsDict ${VARS_HEADERS} LINKDEF ${PROJECT_SOURCE_DIR}/include/VarsLinkDef.h)
+ROOT_GENERATE_DICTIONARY(G__BranchVarsDict ${BRANCHVARS_HEADERS} LINKDEF ${PROJECT_SOURCE_DIR}/include/BranchVarsLinkDef.h)
 
 # Add generated dictionary source to your sources
-list(APPEND SOURCES ${CMAKE_CURRENT_BINARY_DIR}/G__VarsDict.cxx)
+list(APPEND SOURCES ${CMAKE_CURRENT_BINARY_DIR}/G__BranchVarsDict.cxx)
+
+add_library(BranchVarsDict SHARED ${CMAKE_CURRENT_BINARY_DIR}/G__BranchVarsDict.cxx)
+target_include_directories(BranchVarsDict PRIVATE ${PROJECT_SOURCE_DIR}/include)
+# Link the dictionary library with ROOT libraries
+target_link_libraries(BranchVarsDict
+  PRIVATE
+    ROOT::RIO
+    ROOT::Net
+    ROOT::Hist
+    ROOT::Tree
+    ROOT::Physics
+    ROOT::EG
+)
 
 # Executable
 add_executable(processHipoFiles ${SOURCES})
