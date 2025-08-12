@@ -1,7 +1,17 @@
 {
     "ebeam": 6.535,
     "torus": 1,
-    "channel": "aaoGenOnly",
-    "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
-    "isMC": true
+    "channel": "eppi0",
+    "branches": {
+        "event":    ["numElectrons", "numProtons", "numPhotons"],
+        "electron": ["vz", "pz", "xFT", "yFT", "xDC1", "yDC1", "xDC2", "yDC2", "xDC3", "yDC3", "xPCAL", "yPCAL", 
+                     "uPCAL", "vPCAL", "wPCAL", "uECIN", "vECIN", "wECIN", "uECOUT", "vECOUT", "wECOUT",
+                     "E_PCAL", "E_ECIN", "E_ECOUT"],
+        "proton":   ["vz", "pz", "xDC1", "yDC1", "xDC2", "yDC2", "xDC3", "yDC3",
+                     "edge_cvt1", "edge_cvt3", "edge_cvt5", "edge_cvt7", "edge_cvt12", "theta_cvt", "phi_cvt"],
+        "photon":   ["vz", "xFT", "yFT", "xPCAL", "yPCAL", 
+                     "uPCAL", "vPCAL", "wPCAL", "uECIN", "vECIN" ,"wECIN", "uECOUT", "vECOUT", "wECOUT",
+                     "E_PCAL", "E_ECIN", "E_ECOUT"]
+    },
+    "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"]
 }

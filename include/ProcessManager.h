@@ -27,6 +27,7 @@ public:
 
     std::string currentTimestamp() const; 
     static int getDetector(int status);
+    bool channelCheck(float Q2, float W, float y);
     bool passesVertexCut(const float vz, const int zmin=-8, const int zmax=2);
 
     // saves ROOT tree to output file: 
@@ -48,6 +49,7 @@ private:
     bool requireTopology_ = false;
 
     FiducialCuts* FC_ = nullptr;
+    TFile* outFile_   = nullptr;
     TTree* tree_      = nullptr;
 
     EventVars ev_;

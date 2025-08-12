@@ -49,12 +49,20 @@ target_include_directories(BranchVarsDict PRIVATE ${PROJECT_SOURCE_DIR}/include)
 # Link the dictionary library with ROOT libraries
 target_link_libraries(BranchVarsDict
   PRIVATE
+    ROOT::Core
     ROOT::RIO
     ROOT::Net
     ROOT::Hist
     ROOT::Tree
     ROOT::Physics
     ROOT::EG
+)
+
+# Make sure ROOT can find it (install into lib/)
+install(TARGETS BranchVarsDict LIBRARY DESTINATION lib)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/libBranchVarsDict_rdict.pcm
+    DESTINATION lib
 )
 
 # Executable

@@ -48,6 +48,8 @@ Double_t wrap360(Double_t deg) {
 
 void acceptancePlots(const char* inputFilePath = "input.root", const char* outFilePath = "acceptancePlots.root") {
     // ─── Open Input File and Tree ─────────────────────────────
+
+    gSystem->Load("/work/clas12/storyf/SF_analysis_software/build/install/lib/libBranchVarsDict.so");
     TFile* file = TFile::Open(inputFilePath);
     if (!file || file->IsZombie()) {
         std::cerr << "Could not open file: " << inputFilePath << std::endl;
@@ -143,63 +145,63 @@ void acceptancePlots(const char* inputFilePath = "input.root", const char* outFi
 
     // ─── Fill Histograms from Tree ───────────────────────────
     // tree->Draw("[branch var] >> [h_name]");
-    tree->Draw("pid >> h_pid");
-    tree->Draw("helicity >> h_helicity");
+    //tree->Draw("pid >> h_pid");
+    tree->Draw("event.helicity >> h_helicity");
 
 
-    tree->Draw("Q2 >> h_Q2");
-    tree->Draw("nu >> h_nu");
-    tree->Draw("Xb >> h_Xb");
-    tree->Draw("y  >> h_y");
-    tree->Draw("W  >> h_W");
+    tree->Draw("DIS.Q2 >> h_Q2");
+    tree->Draw("DIS.nu >> h_nu");
+    tree->Draw("DIS.Xb >> h_Xb");
+    tree->Draw("DIS.y  >> h_y");
+    tree->Draw("DIS.W  >> h_W");
 
-    tree->Draw("e_p >> h_e_p");
-    tree->Draw("e_theta * 180.0/TMath::Pi() >> h_e_theta");
-    tree->Draw("wrap360(e_phi * 180.0/TMath::Pi()) >> h_e_phi");
-    tree->Draw("e_vz >> h_e_vz");
-    tree->Draw("e_chi2pid >> h_e_chi2pid", "pid == 11");
-    tree->Draw("detEle >> h_detEle", "detEle >= 0");
-    tree->Draw("e_sector >> h_e_sector", "e_sector > -1");
-    tree->Draw("e_E_PCAL >> h_e_E_PCAL");
-    tree->Draw("e_E_ECIN >> h_e_E_ECIN");
-    tree->Draw("e_E_ECOUT >> h_e_E_ECOUT");
+    tree->Draw("e.p >> h_e_p");
+    tree->Draw("e.theta * 180.0/TMath::Pi() >> h_e_theta");
+    tree->Draw("wrap360(e.phi * 180.0/TMath::Pi()) >> h_e_phi");
+    tree->Draw("e.vz >> h_e_vz");
+    tree->Draw("e.chi2pid >> h_e_chi2pid");
+    tree->Draw("e.det >> h_detEle", "e.det >= 0");
+    tree->Draw("e.sector >> h_e_sector", "e.sector > -1");
+    tree->Draw("e.E_PCAL >> h_e_E_PCAL");
+    tree->Draw("e.E_ECIN >> h_e_E_ECIN");
+    tree->Draw("e.E_ECOUT >> h_e_E_ECOUT");
 
-    tree->Draw("e_yDC1:e_xDC1 >> h_e_yDC1_vs_e_xDC1", "", "COLZ");
-    tree->Draw("e_yDC2:e_xDC2 >> h_e_yDC2_vs_e_xDC2", "", "COLZ");
-    tree->Draw("e_yDC3:e_xDC3 >> h_e_yDC3_vs_e_xDC3", "", "COLZ");
+    tree->Draw("e.yDC1:e.xDC1 >> h_e_yDC1_vs_e_xDC1", "", "COLZ");
+    tree->Draw("e.yDC2:e.xDC2 >> h_e_yDC2_vs_e_xDC2", "", "COLZ");
+    tree->Draw("e.yDC3:e.xDC3 >> h_e_yDC3_vs_e_xDC3", "", "COLZ");
 
-    tree->Draw("Q2 : Xb >> h_Q2_vs_Xb", "", "COLZ");
+    tree->Draw("DIS.Q2 : DIS.Xb >> h_Q2_vs_Xb", "", "COLZ");
 
-    tree->Draw("p_p >> h_p_p");
-    tree->Draw("p_theta * 180.0/TMath::Pi() >> h_p_theta");
-    tree->Draw("wrap360(p_phi * 180.0/TMath::Pi()) >> h_p_phi");
-    tree->Draw("p_vz >> h_p_vz");
-    tree->Draw("chi2pid >> h_p_chi2pid", "pid == 2212");
-    tree->Draw("detPro >> h_detPro", "detPro >= 0");
-    tree->Draw("p_sector >> h_p_sector", "p_sector > -1");
-    tree->Draw("p_edge_cvt1 >> h_p_edge_cvt1");
-    tree->Draw("p_edge_cvt3 >> h_p_edge_cvt3");
-    tree->Draw("p_edge_cvt5 >> h_p_edge_cvt5");
-    tree->Draw("p_edge_cvt7 >> h_p_edge_cvt7");
-    tree->Draw("p_edge_cvt12 >> h_p_edge_cvt12");
-    tree->Draw("p_theta_cvt * 180/TMath::Pi() >> h_p_theta_cvt");
-    tree->Draw("wrap360(p_phi_cvt * 180/TMath::Pi()) >> h_p_phi_cvt", "TMath::Finite(p_phi_cvt)");
+    tree->Draw("p.p >> h_p_p");
+    tree->Draw("p.theta * 180.0/TMath::Pi() >> h_p_theta");
+    tree->Draw("wrap360(p.phi * 180.0/TMath::Pi()) >> h_p_phi");
+    tree->Draw("p.vz >> h_p_vz");
+    tree->Draw("p.chi2pid >> h_p_chi2pid");
+    tree->Draw("p.det >> h_detPro", "p.det >= 0");
+    tree->Draw("p.sector >> h_p_sector", "p.sector > -1");
+    tree->Draw("p.edge_cvt1 >> h_p_edge_cvt1");
+    tree->Draw("p.edge_cvt3 >> h_p_edge_cvt3");
+    tree->Draw("p.edge_cvt5 >> h_p_edge_cvt5");
+    tree->Draw("p.edge_cvt7 >> h_p_edge_cvt7");
+    tree->Draw("p.edge_cvt12 >> h_p_edge_cvt12");
+    tree->Draw("p.theta_cvt * 180/TMath::Pi() >> h_p_theta_cvt");
+    tree->Draw("wrap360(p.phi_cvt * 180/TMath::Pi()) >> h_p_phi_cvt", "TMath::Finite(p.phi_cvt)");
 
-    tree->Draw("p_yDC1:p_xDC1 >> h_p_yDC1_vs_p_xDC1", "", "COLZ");
-    tree->Draw("p_yDC2:p_xDC2 >> h_p_yDC2_vs_p_xDC2", "", "COLZ");
-    tree->Draw("p_yDC3:p_xDC3 >> h_p_yDC3_vs_p_xDC3", "", "COLZ");
-    tree->Draw("p_theta * 180.0/TMath::Pi() : p_phi * 180.0/TMath::Pi() >> h_p_theta_vs_p_phi");
-    tree->Draw("p_theta_cvt * 180.0/TMath::Pi() : wrap360(p_phi_cvt * 180.0/TMath::Pi()) >> h_p_theta_cvt_vs_p_phi_cvt");
+    tree->Draw("p.yDC1:p.xDC1 >> h_p_yDC1_vs_p_xDC1", "", "COLZ");
+    tree->Draw("p.yDC2:p.xDC2 >> h_p_yDC2_vs_p_xDC2", "", "COLZ");
+    tree->Draw("p.yDC3:p.xDC3 >> h_p_yDC3_vs_p_xDC3", "", "COLZ");
+    tree->Draw("p.theta * 180.0/TMath::Pi() : p.phi * 180.0/TMath::Pi() >> h_p_theta_vs_p_phi");
+    tree->Draw("p.theta_cvt * 180.0/TMath::Pi() : wrap360(p.phi_cvt * 180.0/TMath::Pi()) >> h_p_theta_cvt_vs_p_phi_cvt");
 
-    tree->Draw("g_p >> h_g_p");
-    tree->Draw("g_theta * 180.0/TMath::Pi() >> h_g_theta");
-    tree->Draw("wrap360(g_phi * 180.0/TMath::Pi()) >> h_g_phi");
-    tree->Draw("chi2pid >> h_g_chi2pid", "pid == 22");
-    tree->Draw("detPho >> h_detPho", "detPho >= 0");
-    tree->Draw("g_sector >> h_g_sector", "g_sector > -1");
-    tree->Draw("g_E_PCAL >> h_g_E_PCAL");
-    tree->Draw("g_E_ECIN >> h_g_E_ECIN");
-    tree->Draw("g_E_ECOUT >> h_g_E_ECOUT");
+    tree->Draw("g.p >> h_g_p");
+    tree->Draw("g.theta * 180.0/TMath::Pi() >> h_g_theta");
+    tree->Draw("wrap360(g.phi * 180.0/TMath::Pi()) >> h_g_phi");
+    tree->Draw("g.chi2pid >> h_g_chi2pid");
+    tree->Draw("g.det >> h_detPho", "g.det >= 0");
+    tree->Draw("g.sector >> h_g_sector", "g.sector > -1");
+    tree->Draw("g.E_PCAL >> h_g_E_PCAL");
+    tree->Draw("g.E_ECIN >> h_g_E_ECIN");
+    tree->Draw("g.E_ECOUT >> h_g_E_ECOUT");
 
 
     // ─── Fits ──────────────────────────────────
@@ -247,10 +249,10 @@ void acceptancePlots(const char* inputFilePath = "input.root", const char* outFi
 
     h_Q2_vs_Xb->Write();
 
-    layerBySector(tree, "PCAL", "e_vPCAL", "e_wPCAL", "e_sector");
-    layerBySector(tree, "ECIN", "e_vECIN", "e_wECIN", "e_sector");
-    layerBySector(tree, "ECOUT", "e_vECOUT", "e_wECOUT", "e_sector");
-    layerBySector(tree, "vu_ECOUT", "e_vECOUT", "e_uECOUT", "e_sector");
+    layerBySector(tree, "PCAL", "e.vPCAL", "e.wPCAL", "e.sector");
+    layerBySector(tree, "ECIN", "e.vECIN", "e.wECIN", "e.sector");
+    layerBySector(tree, "ECOUT", "e.vECOUT", "e.wECOUT", "e.sector");
+    layerBySector(tree, "vu_ECOUT", "e.vECOUT", "e.uECOUT", "e.sector");
 
     h_p_p->Write();
     h_p_theta->Write();
@@ -283,10 +285,10 @@ void acceptancePlots(const char* inputFilePath = "input.root", const char* outFi
     h_g_E_ECIN->Write();
     h_g_E_ECOUT->Write();
 
-    layerBySector(tree, "gPCAL", "g_vPCAL", "g_wPCAL", "g_sector");
-    layerBySector(tree, "gECIN", "g_vECIN", "g_wECIN", "g_sector");
-    layerBySector(tree, "gECOUT", "g_vECOUT", "g_wECOUT", "g_sector");
-    layerBySector(tree, "vu_gECOUT", "g_vECOUT", "g_uECOUT", "g_sector");
+    layerBySector(tree, "gPCAL", "g.vPCAL", "g.wPCAL", "g.sector");
+    layerBySector(tree, "gECIN", "g.vECIN", "g.wECIN", "g.sector");
+    layerBySector(tree, "gECOUT", "g.vECOUT", "g.wECOUT", "g.sector");
+    layerBySector(tree, "vu_gECOUT", "g.vECOUT", "g.uECOUT", "g.sector");
 
     // c->Write();
 

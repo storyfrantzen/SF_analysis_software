@@ -24,6 +24,7 @@ struct EventVars : public TObject {
     ClassDef(EventVars, 1);
 };
 struct RecVars : public TObject {
+
     // ALWAYS FILLED: //
     int    pid, charge, status, det, sector;
     double p, beta, theta, phi, chi2pid;

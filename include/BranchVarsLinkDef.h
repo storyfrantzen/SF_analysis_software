@@ -4,11 +4,11 @@
 #pragma link off all classes;
 #pragma link off all functions;
 
-#pragma link C++ class EventVars+;
-#pragma link C++ class RecVars+;
-#pragma link C++ class GenVars+;
-#pragma link C++ class DISVars+;
-#pragma link C++ class EPPI0Vars+;
+#pragma link C++ struct EventVars+;
+#pragma link C++ struct RecVars+;
+#pragma link C++ struct GenVars+;
+#pragma link C++ struct DISVars+;
+#pragma link C++ struct EPPI0Vars+;
 
 #endif
 

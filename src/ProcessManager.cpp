@@ -10,7 +10,7 @@
 
 using namespace clas12;
 
-ProcessManager::ProcessManager(const nlohmann::json& config) {   
+ProcessManager::ProcessManager(const nlohmann::json& config) { 
 
     ebeam_       = config["ebeam"];
     torus_       = config["torus"];
@@ -21,32 +21,47 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
 
     for (const auto& cut : config.value("fiducialCuts", std::vector<std::string>{})) { FC_->addCut(cut); }
 
-    tree_ = new TTree("Events", "CLAS12 event data");
-    tree_->SetAutoSave(0);
-    tree_->SetAutoFlush(5000);
+    std::stringstream ss;
+    ss << "output/";
+    if (!outPrefix_.empty()) ss << outPrefix_ << "_";
+    ss << currentTimestamp() << "_" << ebeam_ << "_tor" << torus_ << "_" 
+       << channel_ << ".root";
+    std::string outFileName = ss.str();
+    
+    outFile_ = new TFile(outFileName.c_str(), "RECREATE");
+    if (!outFile_ || outFile_->IsZombie()) {
+        std::cerr << "Error opening output file: " << outFileName << std::endl;
+        outFile_ = nullptr;
+        return;
+    }
+    outFile_->cd();
 
-    tree_->Branch("event",      "EventVars",   &ev_);
-    tree_->Branch("DIS",        "DISVars",     &dis_);
+    tree_ = new TTree("Events", "CLAS12 event data");
+    tree_->SetAutoSave(500000);  // Autosave every 500k bytes or choose a suitable value
+    tree_->SetAutoFlush(5000);  
+
+    tree_->Branch("event", "EventVars", &ev_);
+    tree_->Branch("DIS", "DISVars", &dis_);
 
     if (channel_ == "aaoGenOnly") {
-        tree_->Branch("generator",  "GenVars",     &gen_);
+        tree_->Branch("gen", "GenVars", &gen_);
     }
 
     else if (channel_ == "inclusiveRec") {
-        tree_->Branch("rec",        "RecVars",     &rec_);
+        tree_->Branch("rec", "RecVars", &rec_);
     }
 
     else if (channel_ == "aaoGenMatch") {
-        tree_->Branch("GEN_DIS",    "DISVars",     &gen_dis_);
-        tree_->Branch("generator",  "GenVars",     &gen_);
-        tree_->Branch("rec",        "RecVars",     &rec_);
+        tree_->Branch("GEN_DIS",  "DISVars",     &gen_dis_);
+        tree_->Branch("gen",      "GenVars",     &gen_);
+        tree_->Branch("rec",      "RecVars",     &rec_);
     }
 
     else if (channel_ == "eppi0") {
-        tree_->Branch("electron",   "RecVars",     &e_);
-        tree_->Branch("proton",     "RecVars",     &p_);
-        tree_->Branch("photon",     "RecVars",     &g_);
-        tree_->Branch("eppi0",      "EPPI0Vars",   &eppi0_);
+        tree_->Branch("e",     "RecVars",     &e_);
+        tree_->Branch("p",     "RecVars",     &p_);
+        tree_->Branch("g",     "RecVars",     &g_);
+        tree_->Branch("eppi0", "EPPI0Vars",   &eppi0_);
     }
 
     if (config.contains("branches") && !config["branches"].is_null()) {
@@ -87,6 +102,10 @@ int ProcessManager::getDetector(int status) {
         return -999; // Unknown detector
     }
 
+bool ProcessManager::channelCheck(float Q2, float W, float y) {
+    return Q2 >= 1 && W >= 2 && y <= 0.8;
+}
+
 // Currently in use. Default is -8 <= z <= 2.
 bool ProcessManager::passesVertexCut(const float vz, const int zmin, const int zmax) { 
     return vz >= zmin && vz <= zmax; 
@@ -97,32 +116,16 @@ bool ProcessManager::passesVertexCut(const float vz, const int zmin, const int z
 //////////////////////////////////////////////////////////
 
 void ProcessManager::finalize() {
-
-    std::stringstream ss;
-
-    ss << "output/";
-
-    if (!outPrefix_.empty()) {
-        ss << outPrefix_ << "_"; 
-    }
-
-    ss << currentTimestamp() << "_" 
-       << ebeam_ << "_tor" << torus_ << "_" 
-       << channel_ << "_" << numFills_ << ".root";
-    
-    std::string outFileName = ss.str();
-
-    TFile* outFile = new TFile(outFileName.c_str(), "RECREATE");
-    if (outFile) {
-        outFile->cd();
+    if (outFile_) {
+        outFile_->cd();
         if (tree_) {
             tree_->Write();
             delete tree_;
             tree_ = nullptr;
         }
-        outFile->Close();
-        delete outFile;
-        outFile = nullptr;
+        outFile_->Close();
+        delete outFile_;
+        outFile_ = nullptr;
     } else if (tree_) {
         // Tree exists but no outfile? Just delete tree to avoid leaks.
         delete tree_;
@@ -346,10 +349,7 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
             // Reject if proton vertex isn't in target fiducial volume
             if (!passesVertexCut(pro->par()->getVz())) continue;
 
-            // Reject if topology has been specified (underscored private variables) && proton fails the topology
             int detPro = getDetector(pro->par()->getStatus());
-            //if (requireTopology_ && detPro != detPro_) continue;
-
             // Reject if proton fails fiducial cuts (ONLY if cuts are listed!)
             if (detPro == 1 && !FC_->passesDC(pro, torus_)) continue;
             if (detPro == 2 && !FC_->passesCVT(pro)) continue;
@@ -371,9 +371,6 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
 
                     // Reject if photons are not detected in same sector
                     if (sec1 != sec2) continue;
-
-                    // Reject if topology has been specified && either photon fails the topology
-                    //if (requireTopology_ && (det1 != detPho_ || det2 != detPho_)) continue;
 
                     // Reject if either photon is detected in FT and fails FT fiducial cuts (fails ONLY if FTstandardCut is listed!)
                     if ((det1 == 0 && !FC_->passesFT(g1)) || (det2 == 0 && !FC_->passesFT(g2))) continue;
@@ -430,23 +427,17 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
     
     // Electron 4-vector
     TLorentzVector lv_ePrime;
-    lv_ePrime.SetPxPyPzE(best_electron->par()->getPx(),
-                   best_electron->par()->getPy(),
-                   best_electron->par()->getPz(),
-                   std::sqrt(ELECTRON_MASS * ELECTRON_MASS + best_electron->getP() * best_electron->getP()));
+    lv_ePrime.SetPxPyPzE(e_.px,e_.py, e_.pz, std::sqrt(ELECTRON_MASS * ELECTRON_MASS + e_.p * e_.p));
 
     TLorentzVector lv_pPrime;
-    lv_pPrime.SetPxPyPzE(best_proton->par()->getPx(),
-                   best_proton->par()->getPy(),
-                   best_proton->par()->getPz(),
-                   std::sqrt(PROTON_MASS * PROTON_MASS + best_proton->getP() * best_proton->getP()));
+    lv_pPrime.SetPxPyPzE(p_.px, p_.py, p_.pz, std::sqrt(PROTON_MASS * PROTON_MASS + p_.p * p_.p));
     
     dis_.fill(lv_ePrime, ebeam_);
 
     eppi0_.fill(lv_ePrime, lv_pPrime, lv_bestPi0, ebeam_);
 
     // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region
-    //if (!channelCheck()) return;
+    if (!channelCheck(dis_.Q2, dis_.W, dis_.y)) return;
 
     numFills_++;
 

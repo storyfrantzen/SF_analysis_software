@@ -5,4 +5,4 @@ module use /scigroup/cvmfs/hallb/clas12/sw/modulefiles
 module load root/6.30.04
 module load clas12/5.0
 
-
+setenv LD_LIBRARY_PATH $PWD/build/install/lib:$LD_LIBRARY_PATH
