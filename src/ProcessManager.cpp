@@ -10,6 +10,14 @@
 
 using namespace clas12;
 
+std::string ProcessManager::currentTimestamp() const {
+    auto now = std::chrono::system_clock::now();
+    std::time_t tt = std::chrono::system_clock::to_time_t(now);
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&tt), "%m%d_%H%M");
+    return ss.str();
+}
+
 ProcessManager::ProcessManager(const nlohmann::json& config) { 
 
     ebeam_       = config["ebeam"];
@@ -41,9 +49,10 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
     tree_->SetAutoFlush(5000);  
 
     tree_->Branch("event", "EventVars", &ev_);
-    tree_->Branch("DIS", "DISVars", &dis_);
+    tree_->Branch("dis", "DISVars", &dis_);
 
     if (channel_ == "aaoGenOnly") {
+        tree_->Branch("gen_dis", "GenVars", &gen_dis_);
         tree_->Branch("gen", "GenVars", &gen_);
     }
 
@@ -52,7 +61,7 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
     }
 
     else if (channel_ == "aaoGenMatch") {
-        tree_->Branch("GEN_DIS",  "DISVars",     &gen_dis_);
+        tree_->Branch("gen_dis",  "DISVars",     &gen_dis_);
         tree_->Branch("gen",      "GenVars",     &gen_);
         tree_->Branch("rec",      "RecVars",     &rec_);
     }
@@ -83,14 +92,6 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
 // Little helper functions called by bigger functions: ///
 //////////////////////////////////////////////////////////
 
-std::string ProcessManager::currentTimestamp() const {
-    auto now = std::chrono::system_clock::now();
-    std::time_t tt = std::chrono::system_clock::to_time_t(now);
-    std::stringstream ss;
-    ss << std::put_time(std::localtime(&tt), "%H%M_%m%d%y");
-    return ss.str();
-}
-
 // based on particle status, returns int representation of FT (0), FD (1), or CD (2)
 int ProcessManager::getDetector(int status) {
         const int absStatus = std::abs(status);
@@ -111,15 +112,19 @@ bool ProcessManager::passesVertexCut(const float vz, const int zmin, const int z
     return vz >= zmin && vz <= zmax; 
 }
 
-//////////////////////////////////////////////////////////
-// Bigger functions: //
-//////////////////////////////////////////////////////////
-
 void ProcessManager::finalize() {
     if (outFile_) {
         outFile_->cd();
         if (tree_) {
-            tree_->Write();
+            auto bytesWritten = tree_->Write();
+            if (bytesWritten > 0) {
+                std::cout << "[ProcessManager] Successfully saved tree to file: "
+                          << outFile_->GetName()
+                          << " (" << bytesWritten << " bytes written)" << std::endl;
+            } else {
+                std::cerr << "[ProcessManager] Error: Failed to write tree to file: "
+                          << outFile_->GetName() << std::endl;
+            }
             delete tree_;
             tree_ = nullptr;
         }
@@ -133,6 +138,10 @@ void ProcessManager::finalize() {
     }
 }
 
+//////////////////////////////////////////////////////////
+// Bigger functions: //
+//////////////////////////////////////////////////////////
+
 // MAIN WORKFLOW PERFORMED HERE:
 void ProcessManager::processEvent(clas12::clas12reader& c12) {
     eventsProcessed_++;
@@ -140,12 +149,16 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
         // Generated particles
         auto mcParticles = c12.mcparts();
-        int numGen = mcParticles->getRows();       
+        int numGen = mcParticles->getRows();   
 
         bool electronFilled = false;  
         TLorentzVector lv_ePrime; // will store the first electron’s 4-vector
 
         for (int j = 0; j < numGen; j++) {
+            // initialize ALL vars:
+            ev_.flush();
+            dis_.flush();
+            gen_.flush();
 
             ev_.fill(enabledEvBranches_, c12);
             gen_.fill(mcParticles, j);
@@ -156,7 +169,6 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             if (pid == 11 && !electronFilled) {
                 // Calculate and store only for the first electron
                 lv_ePrime.SetVectM(v_p, ELECTRON_MASS);
-                dis_.fill(lv_ePrime, ebeam_);
                 electronFilled = true;
             } 
 
@@ -176,8 +188,6 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
         auto recParticles = c12.getDetParticles();   
         int numRec = recParticles.size();     
 
-        // Initialize DIS vars
-        dis_.flush();
         bool electronFilled = false;  
         TLorentzVector lv_ePrime; // will store the first electron’s 4-vector       
 
@@ -198,7 +208,6 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                                          p->par()->getPy(), 
                                          p->par()->getPz(), 
                                          ELECTRON_MASS * ELECTRON_MASS + p->getP() * p->getP());
-                    dis_.fill(lv_ePrime, ebeam_);
                     electronFilled = true;
                 } 
             }
@@ -212,6 +221,11 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                 bool passesFC = (det == 0 && FC_->passesFT(p)) || (det == 1 && FC_->passesECAL(p));
                 if (!passesFC) return;
             }
+
+            // Initialize ALL vars:
+            ev_.flush();
+            dis_.flush();
+            rec_.flush();
 
             // If electron already found, repeat DIS fill for all subsequent particles
             if (electronFilled) dis_.fill(lv_ePrime, ebeam_);
@@ -259,9 +273,13 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             int det    = getDetector(rec->par()->getStatus());
             float vz   = rec->par()->getVz();
 
-            // Initialize DIS vars
+            // Initialize ALL vars:
+            ev_.flush();
             dis_.flush();
             gen_dis_.flush();
+            rec_.flush();
+            gen_.flush();
+
             bool electronFilled = false;  
             TLorentzVector lv_gen_ePrime;  
             TLorentzVector lv_ePrime; // will store the first electron’s 4-vector       
@@ -273,17 +291,14 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
                 if (!electronFilled) {
                     lv_gen_ePrime.SetPxPyPzE(v_gen_p.Px(), 
-                                         v_gen_p.Py(), 
-                                         v_gen_p.Pz(), 
-                                         ELECTRON_MASS * ELECTRON_MASS + v_gen_p.Mag() * v_gen_p.Mag());
-
-                    gen_dis_.fill(lv_gen_ePrime, ebeam_);
+                                             v_gen_p.Py(), 
+                                             v_gen_p.Pz(), 
+                                             ELECTRON_MASS * ELECTRON_MASS + v_gen_p.Mag() * v_gen_p.Mag());
 
                     lv_ePrime.SetPxPyPzE(rec->par()->getPx(), 
                                          rec->par()->getPy(), 
                                          rec->par()->getPz(), 
                                          ELECTRON_MASS * ELECTRON_MASS + rec->getP() * rec->getP());
-                    dis_.fill(lv_ePrime, ebeam_);
                     electronFilled = true;
                 } 
             } 
@@ -427,10 +442,16 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
     
     // Electron 4-vector
     TLorentzVector lv_ePrime;
-    lv_ePrime.SetPxPyPzE(e_.px,e_.py, e_.pz, std::sqrt(ELECTRON_MASS * ELECTRON_MASS + e_.p * e_.p));
+    lv_ePrime.SetPxPyPzE(best_electron->par()->getPx(),
+                         best_electron->par()->getPy(),
+                         best_electron->par()->getPz(),
+                         std::sqrt(ELECTRON_MASS * ELECTRON_MASS + best_electron->getP() * best_electron->getP()));
 
     TLorentzVector lv_pPrime;
-    lv_pPrime.SetPxPyPzE(p_.px, p_.py, p_.pz, std::sqrt(PROTON_MASS * PROTON_MASS + p_.p * p_.p));
+    lv_pPrime.SetPxPyPzE(best_proton->par()->getPx(),
+                         best_proton->par()->getPy(),
+                         best_proton->par()->getPz(),
+                         std::sqrt(PROTON_MASS * PROTON_MASS + best_proton->getP() * best_proton->getP()));
     
     dis_.fill(lv_ePrime, ebeam_);
 

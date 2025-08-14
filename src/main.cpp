@@ -25,7 +25,7 @@ ArgResults readArgs(int argc, char** argv) {
     ArgResults result;
 
     if (argc < 3) {
-        std::cerr << "Usage (from project build directory): ./processHipoFiles <config.conf> <hipo_dir1> [<hipo_dir2> ...] [<max_files:int>]" << std::endl;
+        std::cerr << "Usage (from project build directory): ./processHipoFiles <config.json> <hipo_dir1> [<hipo_dir2> ...] [<max_files:int>]" << std::endl;
         return result; // returns empty files and numFiles = 0
     }
 
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
     while (chain.Next()) { 
         if (maxEvents > 0 && PM.eventsProcessed() >= maxEvents) break;
         PM.processEvent(*c12);
-        if (PM.eventsProcessed() % 500000 == 0) std::cout << PM.eventsProcessed() << " events processed. \n";
+        if (PM.eventsProcessed() % 100000 == 0) std::cout << PM.eventsProcessed() << " events have been processed. \n";
     }
 
     PM.finalize();

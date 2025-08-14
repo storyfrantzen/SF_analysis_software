@@ -1,7 +1,53 @@
 // To run from command line, type << root -l -b -q 'rootMacros/EPPI0plots.C("output/test.root")' >>
 
+// Check if all required branches exist in the tree.
+// Returns true if all found, else prints missing and returns false.
+bool checkBranches(TTree* tree, const std::vector<std::string>& branches) {
+    bool allFound = true;
+    std::vector<std::string> missingBranches;
+    for (const auto& b : branches) {
+        if (!tree->GetBranch(b.c_str())) {
+            missingBranches.push_back(b);
+            allFound = false;
+        }
+    }
+    if (!allFound) {
+        std::cerr << "\nERROR: Missing required branches in the TTree 'Events':\n";
+        for (const auto& mb : missingBranches) {
+            std::cerr << "  - " << mb << '\n';
+        }
+        std::cerr << "\nPlease ensure the input ROOT file and TTree contain all these branches.\n"
+                     "Required branches:\n";
+        for (const auto& b : branches) {
+            std::cerr << "  " << b << '\n';
+        }
+    }
+    return allFound;
+}
+
 void EPPI0plots(const char* inputFilePath = "input.root", const char* outFilePath = "EPPI0plots.root") {
     // ─── Open Input File and Tree ─────────────────────────────
+
+    gSystem->Load("/work/clas12/storyf/SF_analysis_software/build/install/lib/libBranchVarsDict.so");
+
+
+    // List of required branches for this macro to run correctly.
+    const std::vector<std::string> requiredBranches = {
+        "event.helicity",
+        "dis.Q2", "dis.nu", "dis.Xb", "dis.y", "dis.W",
+        "e.p", "e.theta", "e.phi", "e.vz", "e.chi2pid", "e.det", "e.sector",
+        "e.E_PCAL", "e.E_ECIN", "e.E_ECOUT",
+        "e.xDC1", "e.yDC1", "e.xDC2", "e.yDC2", "e.xDC3", "e.yDC3",
+        "p.p", "p.theta", "p.phi", "p.vz", "p.chi2pid", "p.det", "p.sector",
+        "p.edge_cvt1", "p.edge_cvt3", "p.edge_cvt5", "p.edge_cvt7", "p.edge_cvt12",
+        "p.theta_cvt", "p.phi_cvt",
+        "p.xDC1", "p.yDC1", "p.xDC2", "p.yDC2", "p.xDC3", "p.yDC3",
+        "g.p", "g.theta", "g.phi", "g.chi2pid", "g.det", "g.sector",
+        "g.E_PCAL", "g.E_ECIN", "g.E_ECOUT",
+        "e.vPCAL", "e.wPCAL", "e.vECIN", "e.wECIN", "e.vECOUT", "e.wECOUT", "e.uECOUT",
+        "g.vPCAL", "g.wPCAL", "g.vECIN", "g.wECIN", "g.vECOUT", "g.wECOUT", "g.uECOUT"
+    };
+
     TFile* file = TFile::Open(inputFilePath);
     if (!file || file->IsZombie()) {
         std::cerr << "Could not open file: " << inputFilePath << std::endl;
@@ -12,6 +58,11 @@ void EPPI0plots(const char* inputFilePath = "input.root", const char* outFilePat
     if (!tree) {
         std::cerr << "Could not find tree 'Events' in file." << std::endl;
         return;
+    }
+
+    if (!checkBranches(tree, requiredBranches)) {
+        // Missing required branches, abort.
+        std::cout << "Proceeding with remaining histograms." << std::endl;
     }
 
     // ─── Create Histograms ───────────────────────────────────
@@ -57,33 +108,33 @@ void EPPI0plots(const char* inputFilePath = "input.root", const char* outFilePat
 
 
     // ─── Fill Histograms from Tree ───────────────────────────
-    tree->Draw("helicity >> h_helicity");
+    tree->Draw("event.helicity >> h_helicity");
     //tree->Draw("numPhotons >> h_numPhotons");
-    tree->Draw("m_gg >> h_mgg");
-    tree->Draw("Q2 >> h_Q2");
-    tree->Draw("W >> h_W");
-    tree->Draw("t >> h_t");
-    tree->Draw("fmod((trentoPhi * 180.0 / TMath::Pi()) + 360.0, 360.0) >> h_phiT");
-    tree->Draw("m2_epX >> h_m2_epX");
-    tree->Draw("m2_epi0X >> h_m2_epi0X");
-    tree->Draw("px_miss >> h_px_miss");
-    tree->Draw("py_miss >> h_py_miss");
-    tree->Draw("pz_miss >> h_pz_miss");
-    tree->Draw("E_miss >> h_E_miss");
-    tree->Draw("deltaPhi * 180/TMath::Pi() >> h_deltaPhi");
+    tree->Draw("eppi0.m_gg >> h_mgg");
+    tree->Draw("dis.Q2 >> h_Q2");
+    tree->Draw("dis.W >> h_W");
+    tree->Draw("eppi0.t >> h_t");
+    tree->Draw("fmod((eppi0.trentoPhi * 180.0 / TMath::Pi()) + 360.0, 360.0) >> h_phiT");
+    tree->Draw("eppi0.m2_epX >> h_m2_epX");
+    tree->Draw("eppi0.m2_epi0X >> h_m2_epi0X");
+    tree->Draw("eppi0.px_miss >> h_px_miss");
+    tree->Draw("eppi0.py_miss >> h_py_miss");
+    tree->Draw("eppi0.pz_miss >> h_pz_miss");
+    tree->Draw("eppi0.E_miss >> h_E_miss");
+    tree->Draw("eppi0.pi0_deltaPhi * 180/TMath::Pi() >> h_deltaPhi");
 
-    tree->Draw("Q2:Xb >> h_Q2_vs_Xb", "", "COLZ");
-    tree->Draw("t : fmod((trentoPhi * 180.0 / TMath::Pi()) + 360.0, 360.0) >> h_t_vs_phiT", "", "COLZ");
-    tree->Draw("e_theta * 180.0/TMath::Pi() : e_p >> h_e_theta_vs_p", "", "COLZ");
-    tree->Draw("e_phi * 180.0/TMath::Pi() : e_p >> h_e_phi_vs_p", "", "COLZ");
-    tree->Draw("p_theta * 180.0/TMath::Pi() : p_p >> h_p_theta_vs_p", "", "COLZ");
-    tree->Draw("p_phi * 180.0/TMath::Pi() : p_p >> h_p_phi_vs_p", "", "COLZ");
-    tree->Draw("g_theta * 180.0/TMath::Pi() : g_p >> h_g_theta_vs_p", "", "COLZ");
-    tree->Draw("g_phi * 180.0/TMath::Pi() : g_p >> h_g_phi_vs_p", "", "COLZ");
-    tree->Draw("m2_epX : px_miss >> h_m2_epX_vs_px_miss", "", "COLZ");
-    tree->Draw("m2_epX : py_miss >> h_m2_epX_vs_py_miss", "", "COLZ");
-    tree->Draw("m2_epX : pz_miss >> h_m2_epX_vs_pz_miss", "", "COLZ");
-    tree->Draw("m2_epX : E_miss  >> h_m2_epX_vs_E_miss", "", "COLZ");
+    tree->Draw("dis.Q2:dis.Xb >> h_Q2_vs_Xb", "", "COLZ");
+    tree->Draw("eppi0.t: fmod((eppi0.trentoPhi * 180.0 / TMath::Pi()) + 360.0, 360.0) >> h_t_vs_phiT", "", "COLZ");
+    tree->Draw("e.theta * 180.0/TMath::Pi() : e.p >> h_e_theta_vs_p", "", "COLZ");
+    tree->Draw("e.phi * 180.0/TMath::Pi() : e.p >> h_e_phi_vs_p", "", "COLZ");
+    tree->Draw("p.theta * 180.0/TMath::Pi() : p.p >> h_p_theta_vs_p", "", "COLZ");
+    tree->Draw("p.phi * 180.0/TMath::Pi() : p.p >> h_p_phi_vs_p", "", "COLZ");
+    tree->Draw("g.theta * 180.0/TMath::Pi() : g.p >> h_g_theta_vs_p", "", "COLZ");
+    tree->Draw("g.phi * 180.0/TMath::Pi() : g.p >> h_g_phi_vs_p", "", "COLZ");
+    tree->Draw("eppi0.m2_epX : eppi0.px_miss >> h_m2_epX_vs_px_miss", "", "COLZ");
+    tree->Draw("eppi0.m2_epX : eppi0.py_miss >> h_m2_epX_vs_py_miss", "", "COLZ");
+    tree->Draw("eppi0.m2_epX : eppi0.pz_miss >> h_m2_epX_vs_pz_miss", "", "COLZ");
+    tree->Draw("eppi0.m2_epX : eppi0.E_miss  >> h_m2_epX_vs_E_miss", "", "COLZ");
 
     // ─── Fits ──────────────────────────────────
     TF1* mggFit = new TF1("mggFit", "gaus(0) + pol1(3)", 0.098, 0.17);

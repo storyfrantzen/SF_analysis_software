@@ -68,6 +68,7 @@
         "MCstudyPlots.C": "cpp",
         "analyzeBSA_OLD.C": "cpp",
         "unordered_set": "cpp",
-        "testReadCustomBranches.C": "cpp"
+        "testReadCustomBranches.C": "cpp",
+        "GEMCstudyPlots.C": "cpp"
     }
 }

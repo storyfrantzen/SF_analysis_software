@@ -13,5 +13,7 @@
                      "uPCAL", "vPCAL", "wPCAL", "uECIN", "vECIN" ,"wECIN", "uECOUT", "vECOUT", "wECOUT",
                      "E_PCAL", "E_ECIN", "E_ECOUT"]
     },
-    "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"]
+    "fiducialCuts": ["DCEdges_RGA", "FT_RGA", "ECAL_RGK", "ECALEdges_RGK", "CVT_RGA"],
+    "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
+    "outPrefix": "FID"
 }

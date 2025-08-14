@@ -62,11 +62,6 @@ void acceptancePlots(const char* inputFilePath = "input.root", const char* outFi
         return;
     }
 
-    // ─── Create Histograms ───────────────────────────────────
-    // TH1[TYPE]* [h_name] = new TH1[TYPE]("[h_name]", "[TITLE]; [Y TITLE]", [BIN #], [MIN_VAL], [MAX_VAL]);
-    // TH2[TYPE]* [h_name] = new TH2[TYPE]("[h_name]", "[y vs x]; [X TITLE] [UNITS]; [Y TITLE] [UNITS]", 
-    //                       [X BIN #], [X MIN_VAL], [X MAX_VAL], [Y BIN #], [Y MIN_VAL], [Y MAX_VAL]);
-
     // INCLUSIVE INFO:
     TH1I* h_pid = new TH1I("h_pid", "Reconstructed particle PID; PID; Counts", 2500, -2500, 2500);
     TH1D* h_helicity = new TH1D("h_helicity", "Helicity Distribution; Helicity; Counts", 10, -5, 5);
@@ -144,16 +139,13 @@ void acceptancePlots(const char* inputFilePath = "input.root", const char* outFi
     
 
     // ─── Fill Histograms from Tree ───────────────────────────
-    // tree->Draw("[branch var] >> [h_name]");
-    //tree->Draw("pid >> h_pid");
     tree->Draw("event.helicity >> h_helicity");
 
-
-    tree->Draw("DIS.Q2 >> h_Q2");
-    tree->Draw("DIS.nu >> h_nu");
-    tree->Draw("DIS.Xb >> h_Xb");
-    tree->Draw("DIS.y  >> h_y");
-    tree->Draw("DIS.W  >> h_W");
+    tree->Draw("dis.Q2 >> h_Q2");
+    tree->Draw("dis.nu >> h_nu");
+    tree->Draw("dis.Xb >> h_Xb");
+    tree->Draw("dis.y  >> h_y");
+    tree->Draw("dis.W  >> h_W");
 
     tree->Draw("e.p >> h_e_p");
     tree->Draw("e.theta * 180.0/TMath::Pi() >> h_e_theta");
@@ -170,7 +162,7 @@ void acceptancePlots(const char* inputFilePath = "input.root", const char* outFi
     tree->Draw("e.yDC2:e.xDC2 >> h_e_yDC2_vs_e_xDC2", "", "COLZ");
     tree->Draw("e.yDC3:e.xDC3 >> h_e_yDC3_vs_e_xDC3", "", "COLZ");
 
-    tree->Draw("DIS.Q2 : DIS.Xb >> h_Q2_vs_Xb", "", "COLZ");
+    tree->Draw("dis.Q2 : dis.Xb >> h_Q2_vs_Xb", "", "COLZ");
 
     tree->Draw("p.p >> h_p_p");
     tree->Draw("p.theta * 180.0/TMath::Pi() >> h_p_theta");
@@ -190,7 +182,7 @@ void acceptancePlots(const char* inputFilePath = "input.root", const char* outFi
     tree->Draw("p.yDC1:p.xDC1 >> h_p_yDC1_vs_p_xDC1", "", "COLZ");
     tree->Draw("p.yDC2:p.xDC2 >> h_p_yDC2_vs_p_xDC2", "", "COLZ");
     tree->Draw("p.yDC3:p.xDC3 >> h_p_yDC3_vs_p_xDC3", "", "COLZ");
-    tree->Draw("p.theta * 180.0/TMath::Pi() : p.phi * 180.0/TMath::Pi() >> h_p_theta_vs_p_phi");
+    tree->Draw("p.theta * 180.0/TMath::Pi() : wrap360(p.phi * 180.0/TMath::Pi()) >> h_p_theta_vs_p_phi");
     tree->Draw("p.theta_cvt * 180.0/TMath::Pi() : wrap360(p.phi_cvt * 180.0/TMath::Pi()) >> h_p_theta_cvt_vs_p_phi_cvt");
 
     tree->Draw("g.p >> h_g_p");
@@ -202,21 +194,6 @@ void acceptancePlots(const char* inputFilePath = "input.root", const char* outFi
     tree->Draw("g.E_PCAL >> h_g_E_PCAL");
     tree->Draw("g.E_ECIN >> h_g_E_ECIN");
     tree->Draw("g.E_ECOUT >> h_g_E_ECOUT");
-
-
-    // ─── Fits ──────────────────────────────────
-    // TF1* [FIT NAME] = new TF1("[FIT TITLE]", "[FIT FUNC.]", [MIN X VAL], [MAX X VAL]);
-    // [FIT NAME]->SetParameters({params});
-    // [h_name]->Fit([FIT NAME], "R");
-
-
-    // ─── Create Canvases ─────────────────────────────────────
-    // TCanvas* c = new TCanvas("c", "[TITLE]", 800, 600);
-    // gStyle->SetOptStat(1110);
-    // gStyle->SetOptFit(1111);
-    // h_name->Draw();
-    // fit->Draw("same");
-    // c->Update();
 
     
     // ─── Save to Output File ─────────────────────────────────

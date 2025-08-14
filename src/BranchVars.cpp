@@ -1,13 +1,5 @@
 #include "BranchVars.h"
 
-// template <typename T>
-// void registerBranchesWithPrefix(std::vector<BranchInfo>& list, const T& obj, const std::string& prefix) {
-//     // [Not in use] helper function to streamline adding arbitrarily many particles to the supported Master Branches List
-//     registerBranchInfo(list, prefix + "pid",    &const_cast<T&>(obj).pid,    "I");
-//     registerBranchInfo(list, prefix + "charge", &const_cast<T&>(obj).charge, "I");
-//     // repeat for all members...
-// }
-
 template <typename T>
 inline double safeGet(T expr) {
     double val = static_cast<double>(expr);
@@ -174,7 +166,8 @@ void EPPI0Vars::fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_p
     pz_miss       = lv_missing.Pz();
     pT_miss       = lv_missing.Pt();
 
-    t = (lv_pPrime - lv_target).M2();
+    // NOTE: "t" is implicitly -t!
+    t = -1 * (lv_pPrime - lv_target).M2();
 
     // Trento Phi: angle from lepton plane to hadron plane, w.r.t. virtual photon momentum
     // 3 vectors

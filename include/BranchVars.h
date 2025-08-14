@@ -84,6 +84,6 @@ struct EPPI0Vars : public TObject {
         t = trentoPhi = NAN;
     }
     void fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_pPrime, const TLorentzVector& lv_pi0, 
-                double ebeam, double m_target=PI0_MASS);
+                double ebeam, double m_target=PROTON_MASS);
     ClassDef(EPPI0Vars, 1);
 };
