@@ -69,6 +69,10 @@
         "analyzeBSA_OLD.C": "cpp",
         "unordered_set": "cpp",
         "testReadCustomBranches.C": "cpp",
-        "GEMCstudyPlots.C": "cpp"
+        "GEMCstudyPlots.C": "cpp",
+        "any": "cpp",
+        "forward_list": "cpp",
+        "ranges": "cpp",
+        "valarray": "cpp"
     }
 }

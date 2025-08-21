@@ -25,9 +25,11 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
     channel_     = config["channel"];
     outPrefix_   = config.value("outPrefix", "");
 
-    FC_ = new FiducialCuts();
+    FC_ = std::make_unique<FiducialCuts>();
 
     for (const auto& cut : config.value("fiducialCuts", std::vector<std::string>{})) { FC_->addCut(cut); }
+
+    KC_ = std::make_unique<KinematicCorrections>(config.value("kinCorrections", nlohmann::json{}));
 
     std::stringstream ss;
     ss << "output/";
@@ -145,7 +147,7 @@ void ProcessManager::finalize() {
 // MAIN WORKFLOW PERFORMED HERE:
 void ProcessManager::processEvent(clas12::clas12reader& c12) {
     eventsProcessed_++;
-    if (channel_ == "aaoGenOnly") {
+    if (channel_ == "genOnly") {
 
         // Generated particles
         auto mcParticles = c12.mcparts();
@@ -199,15 +201,19 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             float vz = p->par()->getVz();
 
             if (pid == 11) {
+                if (p->getP() < 2) continue;
                 bool passesFC = ((det == 0 && FC_->passesFT(p)) || 
                                  (det == 1 && FC_->passesDC(p, torus_) && FC_->passesECAL(p)));
-                if (!(passesFC && passesVertexCut(vz))) return;
+                if (!(passesFC && passesVertexCut(vz))) {
+                    if (i == 0) return;
+                    else continue;
+                }
 
                 if (!electronFilled) {
                     lv_ePrime.SetPxPyPzE(p->par()->getPx(), 
                                          p->par()->getPy(), 
                                          p->par()->getPz(), 
-                                         ELECTRON_MASS * ELECTRON_MASS + p->getP() * p->getP());
+                                         std::sqrt(ELECTRON_MASS * ELECTRON_MASS + p->getP() * p->getP()));
                     electronFilled = true;
                 } 
             }
@@ -215,11 +221,20 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             else if (pid == 2212) {
                 bool passesFC = ((det == 1 && FC_->passesDC(p, torus_)) || 
                                  (det == 2 && FC_->passesCVT(p)));
-                if (!(passesFC && passesVertexCut(vz))) return;
+                if (!(passesFC && passesVertexCut(vz))) continue;
+
+                double p_corr = p->getP() + KC_->deltaP(p->getP(), p->getTheta(), det == 1);
+                double theta_corr = p->getTheta() + KC_->deltaTheta(p->getP(), p->getTheta(), det == 1);
+                double phi_wrap = p->getPhi() < 0 ? p->getPhi() + 2*M_PI : p->getPhi();
+                double phi_corr = phi_wrap + KC_->deltaPhi(p->getP(), p->getTheta(), det == 1);
+
+                if (phi_corr > M_PI) phi_corr -= 2*M_PI;
+                if (phi_corr < -M_PI) phi_corr += 2*M_PI;
             }
             else if (pid == 22) {
+                if (p->par()->getBeta() < 0.9 || p->par()->getBeta() > 1.1) continue;
                 bool passesFC = (det == 0 && FC_->passesFT(p)) || (det == 1 && FC_->passesECAL(p));
-                if (!passesFC) return;
+                if (!passesFC) continue;
             }
 
             // Initialize ALL vars:
@@ -236,7 +251,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             numFills_++;
         }
     }
-    else if (channel_ == "aaoGenMatch") {
+    else if (channel_ == "genMatch") {
         
         auto mcParticles = c12.mcparts();
         auto recParticles = c12.getDetParticles();
@@ -285,20 +300,21 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             TLorentzVector lv_ePrime; // will store the first electron’s 4-vector       
 
             if (gen_pid == 11) {
+                if (rec->getP() < 2) continue;
                 bool passesFC = ((det == 0 && FC_->passesFT(rec)) || 
                                  (det == 1 && FC_->passesDC(rec, torus_) && FC_->passesECAL(rec)));
-                if (!(passesFC && passesVertexCut(vz))) return;
+                if (!(passesFC && passesVertexCut(vz))) continue;
 
                 if (!electronFilled) {
                     lv_gen_ePrime.SetPxPyPzE(v_gen_p.Px(), 
                                              v_gen_p.Py(), 
                                              v_gen_p.Pz(), 
-                                             ELECTRON_MASS * ELECTRON_MASS + v_gen_p.Mag() * v_gen_p.Mag());
+                                             std::sqrt(ELECTRON_MASS * ELECTRON_MASS + v_gen_p.Mag() * v_gen_p.Mag()));
 
                     lv_ePrime.SetPxPyPzE(rec->par()->getPx(), 
                                          rec->par()->getPy(), 
                                          rec->par()->getPz(), 
-                                         ELECTRON_MASS * ELECTRON_MASS + rec->getP() * rec->getP());
+                                         std::sqrt(ELECTRON_MASS * ELECTRON_MASS + rec->getP() * rec->getP()));
                     electronFilled = true;
                 } 
             } 
@@ -310,6 +326,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             }
 
             else if (gen_pid == 22) {
+                if (rec->par()->getBeta() < 0.9 || rec->par()->getBeta() > 1.1) continue;
                 bool passesFC = (det == 0 && FC_->passesFT(rec)) || (det == 1 && FC_->passesECAL(rec));
                 if (!passesFC) return;
             }
@@ -322,7 +339,18 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
             ev_.fill(enabledEvBranches_, c12);
             gen_.fill(mcParticles, j);
-            rec_.fill(enabledRecBranches_, rec);
+            if (gen_pid == 2212) {
+                double p_corr = rec->getP() + KC_->deltaP(rec->getP(), rec->getTheta(), det == 1);
+                double theta_corr = rec->getTheta() + KC_->deltaTheta(rec->getP(), rec->getTheta(), det == 1);
+                double phi_wrap = rec->getPhi() < 0 ? rec->getPhi() + 2*M_PI : rec->getPhi();
+                double phi_corr = phi_wrap + KC_->deltaPhi(rec->getP(), rec->getTheta(), det == 1);
+
+                if (phi_corr > M_PI) phi_corr -= 2*M_PI;
+                if (phi_corr < -M_PI) phi_corr += 2*M_PI;
+                
+                rec_.fill(enabledRecBranches_, rec, p_corr, theta_corr, phi_corr);
+            }
+            else rec_.fill(enabledRecBranches_, rec);
             tree_->Fill();
             numFills_++;
         }
@@ -350,6 +378,8 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
     double  m_bestPi0 = 999;
 
     for (const auto& ele : electrons) {
+
+        if (ele->getP() < 2) continue;
 
         // Reject if electron vertex isn't in target fiducial volume
         if (!passesVertexCut(ele->par()->getVz())) continue;
@@ -380,6 +410,9 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
 
                     // Reject if either photon is detected in CD
                     if (det1 == 2 || det2 == 2) continue;
+
+                    if (g1->par()->getBeta() < 0.9 || g1->par()->getBeta() > 1.1) continue;
+                    if (g2->par()->getBeta() < 0.9 || g2->par()->getBeta() > 1.1) continue;
 
                     int sec1 = g1->getSector();
                     int sec2 = g2->getSector();
@@ -433,7 +466,14 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
     e_.fill(enabledEleBranches_, best_electron);
 
     // PROTON INFO:
-    p_.fill(enabledProBranches_, best_proton);
+    int detBestPro = getDetector(best_proton->par()->getStatus());
+    double p_corr = best_proton->getP() + KC_->deltaP(best_proton->getP(), best_proton->getTheta(), detBestPro == 1);
+    double theta_corr = best_proton->getTheta() + KC_->deltaTheta(best_proton->getP(), best_proton->getTheta(), detBestPro == 1);
+    double phi_wrap = best_proton->getPhi() < 0 ? best_proton->getPhi() + 2*M_PI : best_proton->getPhi();
+    double phi_corr = phi_wrap + KC_->deltaPhi(best_proton->getP(), best_proton->getTheta(), detBestPro == 1);
+    if (phi_corr > M_PI) phi_corr -= 2*M_PI;
+    if (phi_corr < -M_PI) phi_corr += 2*M_PI;
+    p_.fill(enabledProBranches_, best_proton, p_corr, theta_corr, phi_corr);
 
     // PHOTON INFO:
     g_.fill(enabledPhoBranches_, best_g1);

@@ -115,6 +115,21 @@ void RecVars::fill(const std::unordered_set<std::string>& enabledBranches, clas1
                     ? std::atan2(y_cvt, x_cvt) : -999;
 }
 
+void RecVars::fill(const std::unordered_set<std::string>& enabledBranches, clas12::region_particle* rec,
+                   double pIn, double thetaIn, double phiIn) { 
+    fill(enabledBranches, rec);
+
+    // Apply corrections
+    p     = pIn;
+    theta = thetaIn;
+    phi   = phiIn;
+
+    px = safeGetIfEnabled(enabledBranches, "px", p * std::sin(theta) * std::cos(phi));
+    py = safeGetIfEnabled(enabledBranches, "py", p * std::sin(theta) * std::sin(phi));
+    pz = safeGetIfEnabled(enabledBranches, "pz", p * std::cos(theta));
+    
+}
+
 void GenVars::fill(clas12::mcparticle* mcParticles, int j) {
     pid  = mcParticles->getPid(j);
     TVector3 v_gen = TVector3(mcParticles->getPx(j), mcParticles->getPy(j), mcParticles->getPz(j));

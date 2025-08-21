@@ -1,7 +1,7 @@
 {
-    "ebeam": 6.535,
+    "ebeam": 7.546,
     "torus": 1,
-    "channel": "aaoGenMatch",
+    "channel": "genMatch",
     "isMC": true,
     "fiducialCuts": ["DCEdges_RGA", "FT_RGA", "ECAL_RGK", "ECALEdges_RGK", "CVT_RGA"],
     "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],

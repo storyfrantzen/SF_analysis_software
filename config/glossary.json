@@ -16,9 +16,9 @@
         "description": "Physics channel to analyze",
         "type": "string",
         "options": {
-            "aaoGenOnly": "Generated events only",
+            "genOnly": "Generated events only",
             "inclusiveRec": "Accept all PID",
-            "aaoGenMatch": "Accept all PID which satisfy GEN<->REC matching",
+            "genMatch": "Accept all PID which satisfy GEN<->REC matching",
             "eppi0": "Exclusive ep->e'p'pi0"
         }
     },

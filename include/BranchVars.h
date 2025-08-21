@@ -46,6 +46,8 @@ struct RecVars : public TObject {
         edge_cvt1 = edge_cvt3 = edge_cvt5 = edge_cvt7 = edge_cvt12 = theta_cvt = phi_cvt = NAN;
     }
     void fill(const std::unordered_set<std::string>& enabledBranches, clas12::region_particle* part);
+    void fill(const std::unordered_set<std::string>& enabledBranches, clas12::region_particle* rec,
+                   double pIn, double thetaIn, double phiIn);
     ClassDef(RecVars, 1);
 };
 struct GenVars : public TObject {

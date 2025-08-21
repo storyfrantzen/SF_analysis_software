@@ -2,6 +2,7 @@
 
 #include "nlohmann/json.hpp"
 #include "FiducialCuts.h"  // Note: ProcessManager has its own FC object during filtering
+#include "KinematicCorrections.h" // ProcessManager has a member instance of KC during filtering
 #include "BranchVars.h" // IMPORTANT: contains structs that manage ALL quantities to be stored
 #include "PhysicalConstants.h" // contains useful constants
 #include "clas12reader.h"
@@ -48,7 +49,8 @@ private:
     std::string outPrefix_;
     bool requireTopology_ = false;
 
-    FiducialCuts* FC_ = nullptr;
+    std::unique_ptr<KinematicCorrections> KC_;
+    std::unique_ptr<FiducialCuts> FC_;
     TFile* outFile_   = nullptr;
     TTree* tree_      = nullptr;
 
