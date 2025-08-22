@@ -2,59 +2,68 @@
 import argparse
 import ROOT
 import numpy as np
+import cProfile
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize
 
 def show_by_sector(particle, df, layer_name, y_branch, x_branch, sector_branch,
-                   x_range=None, y_range=None, x_bins=100, y_bins=100, log_scale=False):
+                        x_range=None, y_range=None, x_bins=100, y_bins=100, log_scale=False):
+    """
+    Plot 2D distributions by sector using ROOT histograms (multi-threaded).
 
-    fig, axes = plt.subplots(2, 3, figsize=(24, 9), constrained_layout=True)
+    Parameters
+    ----------
+    particle : str
+        Particle name for labeling
+    df : ROOT.RDataFrame
+        Input dataframe
+    layer_name : str
+        Layer identifier for labeling
+    y_branch, x_branch : str
+        Branch names to histogram
+    sector_branch : str
+        Branch identifying sector number
+    x_range, y_range : tuple(float,float), optional
+        Axis ranges
+    x_bins, y_bins : int
+        Histogram binning
+    log_scale : bool
+        If True, use log z-axis
+    """
 
-    # Default bin ranges based on variable if not supplied
-    if x_range is None:
-        x_vals = df.AsNumpy([x_branch])[x_branch]
-        x_range = (np.min(x_vals), np.max(x_vals))
-    if y_range is None:
-        y_vals = df.AsNumpy([y_branch])[y_branch]
-        y_range = (np.min(y_vals), np.max(y_vals))
+    ROOT.EnableImplicitMT()  # Make sure ROOT uses all cores
 
-    bins_x = np.linspace(x_range[0], x_range[1], x_bins + 1)
-    bins_y = np.linspace(y_range[0], y_range[1], y_bins + 1)
+    canvas = ROOT.TCanvas(f"c_{particle}_{layer_name}", f"{particle} {layer_name}", 1200, 800)
+    canvas.Divide(3, 2)
+
+    hist_list = []
 
     for sec in range(1, 7):
-        ax = axes[(sec - 1) // 3, (sec - 1) % 3]
+        # Define histogram name/title
+        hname = f"h_{particle}_{layer_name}_sec{sec}"
+        title = f"{particle} {layer_name} Sector {sec}; {x_branch}; {y_branch}"
 
-        # Filter for this sector
-        df_sec = df.Filter(f"{sector_branch} == {sec}")
-        arrays = df_sec.AsNumpy([x_branch, y_branch])
-        x_vals = arrays[x_branch]
-        y_vals = arrays[y_branch]
+        # Fill ROOT 2D histogram
+        hist = df.Filter(f"{sector_branch} == {sec}").Histo2D(
+            (hname, title, x_bins, x_range[0], x_range[1], y_bins, y_range[0], y_range[1]),
+            x_branch, y_branch
+        )
 
-        # Build 2D histogram
-        H, xedges, yedges = np.histogram2d(x_vals, y_vals, bins=[bins_x, bins_y])
+        hist_list.append(hist)
 
-        H_masked = np.ma.masked_where(H == 0, H)
-
-        # Choose normalization
+        # Draw on canvas pad
+        canvas.cd(sec)
+        ROOT.gPad.SetLeftMargin(0.13)
+        ROOT.gPad.SetRightMargin(0.13)
         if log_scale:
-            norm = LogNorm(vmin=H_masked.min() if H_masked.min() > 0 else 1, vmax=H_masked.max())
-        else:
-            norm = Normalize(vmin=0, vmax=H_masked.max())
+            ROOT.gPad.SetLogz()
+        hist.GetValue().Draw("COLZ")
+        hist.GetValue().SetStats(False)
 
-        # Create meshgrid from bin edges for pcolormesh
-        X, Y = np.meshgrid(xedges, yedges)
+    canvas.Update()
+    canvas.SaveAs(f"{particle}_{layer_name}_by_sector.png")
 
-        # Plot using pcolormesh
-        pcm = ax.pcolormesh(X, Y, H_masked.T, cmap='viridis', norm=norm, shading='auto')
-
-        ax.set_title(f"{layer_name} - Sector {sec}")
-        ax.set_xlabel(f"{x_branch}")
-        ax.set_ylabel(f"{y_branch}")
-        fig.colorbar(pcm, ax=ax, label='Counts')
-
-    plt.suptitle(f"2D Histograms of {layer_name}: {y_branch} vs {x_branch} by Sector")
-    plt.savefig(f"{particle}_{layer_name}_bySector.png")
-    plt.close(fig)
+    return hist_list
 
 def main():
     parser = argparse.ArgumentParser(description="Create acceptance plots from ROOT TTree using RDataFrame and matplotlib")
@@ -86,23 +95,37 @@ def main():
         # show_by_sector("electron", df_ele, "PCAL", "rec.vPCAL", "rec.wPCAL", "rec.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450))
         # show_by_sector("electron", df_ele, "ECIN", "rec.vECIN", "rec.wECIN", "rec.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450))
         # show_by_sector("electron", df_ele, "ECOUT", "rec.vECOUT", "rec.wECOUT", "rec.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450))
-        show_by_sector("electron", df_ele, "ECAL", "SF", "rec.p", "rec.sector", x_range=(2, 7), y_range=(0.1, 0.35), x_bins=100, y_bins=100)
+        # show_by_sector("electron", df_ele, "ECAL", "SF", "rec.p", "rec.sector", x_range=(2, 7), y_range=(0.1, 0.35), x_bins=100, y_bins=100)
         # show_by_sector("photon",   df_pho, "PCAL", "rec.vPCAL", "rec.wPCAL", "rec.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450))
         # show_by_sector("photon",   df_pho, "ECIN", "rec.vECIN", "rec.wECIN", "rec.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450))
         # show_by_sector("photon",   df_pho, "ECOUT", "rec.vECOUT", "rec.wECOUT", "rec.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450))
-        show_by_sector("photon",   df_pho, "ECAL", "SF", "rec.p", "rec.sector", x_range=(0, 8), y_range=(0.1, 0.4), x_bins=100, y_bins=100)
+        # show_by_sector("photon",   df_pho, "ECAL", "SF", "rec.p", "rec.sector", x_range=(0, 8), y_range=(0.1, 0.4), x_bins=100, y_bins=100)
+
+        histos = show_by_sector(
+        particle="electron",
+        df=df_ele,
+        layer_name="ECAL",
+        y_branch="SF",
+        x_branch="rec.p",
+        sector_branch="rec.sector",
+        x_range=(2, 7),
+        y_range=(0.1, 0.35),
+        x_bins=100,
+        y_bins=100,
+        )
+        
     
     elif "e" in branch_list and "p" in branch_list and "g" in branch_list:
-        df = df.Define("eSF", "(e.E_PCAL + e.E_ECIN + e.E_ECOUT) / p")
-        df = df.Define("gSF", "(g.E_PCAL + g.E_ECIN + g.E_ECOUT) / p")
-        show_by_sector("electron", df, "PCAL", "e.vPCAL", "e.wPCAL", "e.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450)
-        show_by_sector("electron", df, "ECIN", "e.vECIN", "e.wECIN", "e.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450)
-        show_by_sector("electron", df, "ECOUT", "e.vECOUT", "e.wECOUT", "e.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450)
-        show_by_sector("electron", df, "ECAL", "eSF", "e.p", "e.sector", x_range=(0, 8), y_range=(0, 0.4), x_bins=100, y_bins=100, log_scale=True)
-        show_by_sector("photon",   df, "PCAL", "g.vPCAL", "g.wPCAL", "g.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450)
-        show_by_sector("photon",   df, "ECIN", "g.vECIN", "g.wECIN", "g.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450)
-        show_by_sector("photon",   df, "ECOUT", "g.vECOUT", "g.wECOUT", "g.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450)
-        show_by_sector("photon", df, "ECAL", "gSF", "g.p", "g.sector", x_range=(0, 8), y_range=(0, 0.4), x_bins=100, y_bins=100)
+        # df = df.Define("eSF", "(e.E_PCAL + e.E_ECIN + e.E_ECOUT) / p")
+        # df = df.Define("gSF", "(g.E_PCAL + g.E_ECIN + g.E_ECOUT) / p")
+        # show_by_sector("electron", df, "PCAL", "e.vPCAL", "e.wPCAL", "e.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450)
+        # show_by_sector("electron", df, "ECIN", "e.vECIN", "e.wECIN", "e.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450)
+        # show_by_sector("electron", df, "ECOUT", "e.vECOUT", "e.wECOUT", "e.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450)
+        # show_by_sector("electron", df, "ECAL", "eSF", "e.p", "e.sector", x_range=(0, 8), y_range=(0, 0.4), x_bins=100, y_bins=100)
+        # show_by_sector("photon",   df, "PCAL", "g.vPCAL", "g.wPCAL", "g.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450)
+        # show_by_sector("photon",   df, "ECIN", "g.vECIN", "g.wECIN", "g.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450)
+        # show_by_sector("photon",   df, "ECOUT", "g.vECOUT", "g.wECOUT", "g.sector", x_range=(0, 450), y_range=(0, 450), x_bins=450, y_bins=450)
+        # show_by_sector("photon", df, "ECAL", "gSF", "g.p", "g.sector", x_range=(0, 8), y_range=(0, 0.4), x_bins=100, y_bins=100)
     
     else:
         print("Unable to load necessary particle branches! Check tree!")
@@ -110,4 +133,5 @@ def main():
 if __name__ == "__main__":
     # Load BranchVars dictionary from install directory:
     ROOT.gSystem.Load("/work/clas12/storyf/SF_analysis_software/build/install/lib/libBranchVarsDict.so")
+    #cProfile.run("main()")
     main()

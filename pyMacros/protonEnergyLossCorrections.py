@@ -8,7 +8,7 @@ import numpy as np
 import json 
 import re
 
-# Load your compiled dictionary for branch variables
+# Load compiled dictionary for branch variables
 ROOT.gSystem.Load("/work/clas12/storyf/SF_analysis_software/build/install/lib/libBranchVarsDict.so")
 
 def get_adaptive_edges_from_df(df, varname, n_bins, min_val, max_val, fine_bins=10000000):
@@ -316,7 +316,7 @@ parser.add_argument("--max_events", type=int, help="Maximum number of events to 
 parser.add_argument("-q", "--quiet", action="store_true", help="Suppress binned histograms.")
 parser.add_argument("--isCD", action="store_true", help="Proton detected in CD")
 args = parser.parse_args()
-
+ 
 file = ROOT.TFile(args.input_file, 'READ')
 tree = file.Get("Events")
 df = ROOT.RDataFrame(tree)
@@ -327,7 +327,7 @@ df_pro = df.Filter("rec.pid == 2212 && rec.charge == 1")
 df_pro = df_pro.Define("theta_deg", f"rec.theta * {radtoDeg}")
 df_pro = df_pro.Define("delta_p", "gen.p - rec.p")
 df_pro = df_pro.Define("delta_theta", f"(gen.theta - rec.theta) * {radtoDeg}")
-df_pro = df_pro.Define("delta_phi", f"(gen.phi - rec.phi) * {radtoDeg}")
+df_pro = df_pro.Define("delta_phi", f"TMath::ATan2(TMath::Sin(gen.phi - rec.phi), TMath::Cos(gen.phi - rec.phi)) * {radtoDeg}")
 
 mpl_symbol_map  = {"delta_p": "p", "delta_theta": r"\theta", "delta_phi": r"\phi"}
 root_symbol_map = {"delta_p": "p", "delta_theta": "#theta", "delta_phi": "#phi"}
@@ -382,7 +382,7 @@ fit_orders = {
     # variable : { detector : order }
     "delta_p": {"FD": 1, "CD": 2},
     "delta_theta": {"FD": 3, "CD": 2},
-    "delta_phi": {"FD": 3, "CD": 2},
+    "delta_phi": {"FD": 4, "CD": 2},
 }
 detector_key = "CD" if args.isCD else "FD"
 

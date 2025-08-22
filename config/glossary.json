@@ -73,9 +73,35 @@
         "description": "Optional max # events to process",
         "type": "int"
     },
+    "kinCorrections": {
+        "required": false,
+        "description": "Functional forms and parameters for correcting proton energy loss",
+        "keys": {
+            "p_delta_p_FD": {
+                "form": "Functional form defined in KinematicCorrections, e.g., [0] + [1]/p + [2]/(p^2)",
+                "coeffs": {
+                    "0": ["p0(theta^0)", "p1(theta^1)", "p2(theta^2)", "etc."],
+                    "1": ["theta power series"],
+                    "2": ["theta power series"]
+                }
+            },
+            "p_delta_p_CD": {
+                
+            },
+            "p_delta_theta_FD":"",
+            "p_delta_theta_CD":"",
+            "p_delta_phi_FD":"",
+            "p_delta_phi_CD":""
+        }
+    },
+    "SFCuts": {
+        "required": false,
+        "description": "Incorporate 3-sigma SF cuts for electrons",
+        "keys": "Accepts either the str filepath to the output .json of pyMacros/getSFCuts.py, or the .json itself"
+    },
     "outPrefix": {
         "required": false,
-        "description": "optioal prefix for ROOT output filename",
+        "description": "Optional prefix for ROOT output filename",
         "type": "string"
     }
 }

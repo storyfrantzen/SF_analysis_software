@@ -1,9 +1,9 @@
 {
-    "ebeam": 7.546,
+    "ebeam": 6.535,
     "torus": 1,
     "channel": "genMatch",
     "isMC": true,
     "fiducialCuts": ["DCEdges_RGA", "FT_RGA", "ECAL_RGK", "ECALEdges_RGK", "CVT_RGA"],
-    "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
+    "SFCuts": "/work/clas12/storyf/SF_analysis_software/config/cuts_and_corrections/RGK_6535_FA18/SF_sigma_cut_params.json",
     "outPrefix": "FID"
 }

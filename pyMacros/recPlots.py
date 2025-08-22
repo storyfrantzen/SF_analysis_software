@@ -167,6 +167,8 @@ def main():
     parser.add_argument("--hist_name", type=str, help="Only compute a single histogram by name")
     args = parser.parse_args()
 
+    ROOT.EnableImplicitMT() 
+
     # Open input file and get tree
     infile = ROOT.TFile.Open(args.input_file)
     if not infile or infile.IsZombie():

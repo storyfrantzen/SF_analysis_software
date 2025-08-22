@@ -90,9 +90,24 @@ int main(int argc, char** argv) {
         std::cerr << "Failed to open config file: " << args.configFile << std::endl;
         return 1;
     }
+    auto resolveExternalJson = [](nlohmann::json& parent, const std::string& key) {
+        if (parent.contains(key) && parent[key].is_string()) {
+            std::ifstream ifs(parent[key].get<std::string>());
+            if (!ifs.is_open()) throw std::runtime_error("Failed to open " + key + " file");
+            nlohmann::json obj; ifs >> obj;
+            parent[key] = obj;
+        }
+    };
     
     json config;
     configStream >> config;
+
+    try {
+        resolveExternalJson(config, "kinCorrections");
+    } catch (const std::exception& e) {
+        std::cerr << "ERROR resolving external JSON: " << e.what() << std::endl;
+        return 1;
+    }
 
     // Add numFiles .hipo files to HipoChain:
     clas12root::HipoChain chain;

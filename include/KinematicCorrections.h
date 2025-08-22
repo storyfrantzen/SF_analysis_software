@@ -11,6 +11,9 @@ class KinematicCorrections {
 public:
     using CorrFunc = std::function<double(const std::vector<double>&, double)>;
 
+    // Construct from JSON file path
+    KinematicCorrections(const std::string& filename);
+    // Construct from JSON object (can be empty → no corrections)
     KinematicCorrections(const nlohmann::json& j);
 
     // Apply corrections
@@ -19,7 +22,7 @@ public:
     double deltaPhi(double p, double theta, bool isFD) const;
 
 private:
-    bool enabled_;
+    bool enabled_ = false;
     
     struct CorrEntry {
         CorrFunc func;

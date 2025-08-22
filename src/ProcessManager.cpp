@@ -10,26 +10,44 @@
 
 using namespace clas12;
 
-std::string ProcessManager::currentTimestamp() const {
-    auto now = std::chrono::system_clock::now();
-    std::time_t tt = std::chrono::system_clock::to_time_t(now);
-    std::stringstream ss;
-    ss << std::put_time(std::localtime(&tt), "%m%d_%H%M");
-    return ss.str();
-}
-
 ProcessManager::ProcessManager(const nlohmann::json& config) { 
 
+    // --- Basic Config -- 
     ebeam_       = config["ebeam"];
     torus_       = config["torus"];
     channel_     = config["channel"];
     outPrefix_   = config.value("outPrefix", "");
 
+    // --- Fiducial Cuts ---
     FC_ = std::make_unique<FiducialCuts>();
-
     for (const auto& cut : config.value("fiducialCuts", std::vector<std::string>{})) { FC_->addCut(cut); }
 
-    KC_ = std::make_unique<KinematicCorrections>(config.value("kinCorrections", nlohmann::json{}));
+    // --- Kinematic Corrections ---    
+    if (config.contains("kinCorrections")) {
+        if (config["kinCorrections"].is_string()) {
+            KC_ = std::make_unique<KinematicCorrections>(config["kinCorrections"].get<std::string>());
+        }
+        else if (config["kinCorrections"].is_object()) {
+            KC_ = std::make_unique<KinematicCorrections>(config["kinCorrections"]);
+        } 
+        else {
+            KC_ = std::make_unique<KinematicCorrections>(nlohmann::json{}); 
+        }
+    }
+    else KC_ = std::make_unique<KinematicCorrections>(nlohmann::json{});
+
+    // --- SF Cuts ---
+    if (config.contains("SFCuts")) {
+        if (config["SFCuts"].is_string()) {
+            SF_ = std::make_unique<SFCuts>(config["SFCuts"].get<std::string>());
+        } else if (config["SFCuts"].is_object()) {
+            SF_ = std::make_unique<SFCuts>(config["SFCuts"]);
+        } else {
+            SF_ = std::make_unique<SFCuts>(nlohmann::json{}); // empty → no cuts
+        }
+    } 
+    else SF_ = std::make_unique<SFCuts>(nlohmann::json{}); // default pass-through
+    
 
     std::stringstream ss;
     ss << "output/";
@@ -53,7 +71,7 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
     tree_->Branch("event", "EventVars", &ev_);
     tree_->Branch("dis", "DISVars", &dis_);
 
-    if (channel_ == "aaoGenOnly") {
+    if (channel_ == "genOnly") {
         tree_->Branch("gen_dis", "GenVars", &gen_dis_);
         tree_->Branch("gen", "GenVars", &gen_);
     }
@@ -62,7 +80,7 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
         tree_->Branch("rec", "RecVars", &rec_);
     }
 
-    else if (channel_ == "aaoGenMatch") {
+    else if (channel_ == "genMatch") {
         tree_->Branch("gen_dis",  "DISVars",     &gen_dis_);
         tree_->Branch("gen",      "GenVars",     &gen_);
         tree_->Branch("rec",      "RecVars",     &rec_);
@@ -77,24 +95,27 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
 
     if (config.contains("branches") && !config["branches"].is_null()) {
         auto& b = config["branches"];
-        for (const auto& var : b.value("event", std::vector<std::string>{}))
-            enabledEvBranches_.insert(var);
-        for (const auto& var : b.value("rec", std::vector<std::string>{}))
-            enabledRecBranches_.insert(var);
-        for (const auto& var : b.value("electron", std::vector<std::string>{}))
-            enabledEleBranches_.insert(var);
-        for (const auto& var : b.value("proton", std::vector<std::string>{}))
-            enabledProBranches_.insert(var);
-        for (const auto& var : b.value("photon", std::vector<std::string>{}))
-            enabledPhoBranches_.insert(var);
+        for (const auto& var : b.value("event", std::vector<std::string>{})) enabledEvBranches_.insert(var);
+        for (const auto& var : b.value("rec", std::vector<std::string>{})) enabledRecBranches_.insert(var);
+        for (const auto& var : b.value("electron", std::vector<std::string>{})) enabledEleBranches_.insert(var);
+        for (const auto& var : b.value("proton", std::vector<std::string>{})) enabledProBranches_.insert(var);
+        for (const auto& var : b.value("photon", std::vector<std::string>{})) enabledPhoBranches_.insert(var);
     } 
 }
 
 //////////////////////////////////////////////////////////
-// Little helper functions called by bigger functions: ///
+// Helper functions called by bigger functions: ///
 //////////////////////////////////////////////////////////
 
-// based on particle status, returns int representation of FT (0), FD (1), or CD (2)
+std::string ProcessManager::currentTimestamp() const {
+    auto now = std::chrono::system_clock::now();
+    std::time_t tt = std::chrono::system_clock::to_time_t(now);
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&tt), "%m%d_%H%M");
+    return ss.str();
+}
+
+// Based on particle status, returns int representation of FT (0), FD (1), or CD (2)
 int ProcessManager::getDetector(int status) {
         const int absStatus = std::abs(status);
 
@@ -141,19 +162,18 @@ void ProcessManager::finalize() {
 }
 
 //////////////////////////////////////////////////////////
-// Bigger functions: //
+// MAIN WORKFLOW PERFORMED HERE: //
 //////////////////////////////////////////////////////////
 
-// MAIN WORKFLOW PERFORMED HERE:
 void ProcessManager::processEvent(clas12::clas12reader& c12) {
     eventsProcessed_++;
     if (channel_ == "genOnly") {
 
         // Generated particles
         auto mcParticles = c12.mcparts();
-        int numGen = mcParticles->getRows();   
+        int numGen = mcParticles->getRows();
 
-        bool electronFilled = false;  
+        bool electronFound = false;  
         TLorentzVector lv_ePrime; // will store the first electron’s 4-vector
 
         for (int j = 0; j < numGen; j++) {
@@ -168,13 +188,13 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             int pid = mcParticles->getPid(j);
             TVector3 v_p(mcParticles->getPx(j), mcParticles->getPy(j), mcParticles->getPz(j));
 
-            if (pid == 11 && !electronFilled) {
+            if (pid == 11 && !electronFound) {
                 // Calculate and store only for the first electron
                 lv_ePrime.SetVectM(v_p, ELECTRON_MASS);
-                electronFilled = true;
+                electronFound = true;
             } 
 
-            else if (!electronFilled) {
+            else if (!electronFound) {
                 dis_.flush();
             }
 
@@ -190,18 +210,26 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
         auto recParticles = c12.getDetParticles();   
         int numRec = recParticles.size();     
 
-        bool electronFilled = false;  
+        bool electronFound = false;  
         TLorentzVector lv_ePrime; // will store the first electron’s 4-vector       
 
         for (int i = 0; i < numRec; i++) {
+            // Initialize ALL vars:
+            ev_.flush();
+            dis_.flush();
+            rec_.flush();
+
+            // Begin:
             auto& p = recParticles[i];
 
             int pid  = p->getPid();
             int det  = getDetector(p->par()->getStatus());
+            int sector = p->getSector();
             float vz = p->par()->getVz();
 
             if (pid == 11) {
-                if (p->getP() < 2) continue;
+                if (p->getP() < 1) continue;
+
                 bool passesFC = ((det == 0 && FC_->passesFT(p)) || 
                                  (det == 1 && FC_->passesDC(p, torus_) && FC_->passesECAL(p)));
                 if (!(passesFC && passesVertexCut(vz))) {
@@ -209,12 +237,20 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                     else continue;
                 }
 
-                if (!electronFilled) {
+                if (det == 1) {
+                    float ePCAL  = p->cal(1) ? p->cal(1)->getEnergy() : 0;
+                    float eECIN  = p->cal(4) ? p->cal(4)->getEnergy() : 0;
+                    float eECOUT = p->cal(7) ? p->cal(7)->getEnergy() : 0;
+                    float sf = (ePCAL + eECIN + eECOUT) / p->getP();
+                    if (!SF_->pass(sector, sf, p->getP())) continue;
+                }
+
+                if (!electronFound) {
                     lv_ePrime.SetPxPyPzE(p->par()->getPx(), 
                                          p->par()->getPy(), 
                                          p->par()->getPz(), 
                                          std::sqrt(ELECTRON_MASS * ELECTRON_MASS + p->getP() * p->getP()));
-                    electronFilled = true;
+                    electronFound = true;
                 } 
             }
 
@@ -222,14 +258,6 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                 bool passesFC = ((det == 1 && FC_->passesDC(p, torus_)) || 
                                  (det == 2 && FC_->passesCVT(p)));
                 if (!(passesFC && passesVertexCut(vz))) continue;
-
-                double p_corr = p->getP() + KC_->deltaP(p->getP(), p->getTheta(), det == 1);
-                double theta_corr = p->getTheta() + KC_->deltaTheta(p->getP(), p->getTheta(), det == 1);
-                double phi_wrap = p->getPhi() < 0 ? p->getPhi() + 2*M_PI : p->getPhi();
-                double phi_corr = phi_wrap + KC_->deltaPhi(p->getP(), p->getTheta(), det == 1);
-
-                if (phi_corr > M_PI) phi_corr -= 2*M_PI;
-                if (phi_corr < -M_PI) phi_corr += 2*M_PI;
             }
             else if (pid == 22) {
                 if (p->par()->getBeta() < 0.9 || p->par()->getBeta() > 1.1) continue;
@@ -237,21 +265,34 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                 if (!passesFC) continue;
             }
 
-            // Initialize ALL vars:
-            ev_.flush();
-            dis_.flush();
-            rec_.flush();
-
             // If electron already found, repeat DIS fill for all subsequent particles
-            if (electronFilled) dis_.fill(lv_ePrime, ebeam_);
+            if (electronFound) dis_.fill(lv_ePrime, ebeam_);
 
             ev_.fill(enabledEvBranches_, c12);
-            rec_.fill(enabledRecBranches_, p);
+            if (pid == 2212) {
+                double p_corr = p->getP() + KC_->deltaP(p->getP(), p->getTheta(), det == 1);
+                double theta_corr = p->getTheta() + KC_->deltaTheta(p->getP(), p->getTheta(), det == 1);
+                double phi_wrap = p->getPhi() < 0 ? p->getPhi() + 2*M_PI : p->getPhi();
+                double phi_corr = phi_wrap + KC_->deltaPhi(p->getP(), p->getTheta(), det == 1);
+
+                if (phi_corr > M_PI) phi_corr -= 2*M_PI;
+                if (phi_corr < -M_PI) phi_corr += 2*M_PI;
+                rec_.fill(enabledRecBranches_, p, p_corr, theta_corr, phi_corr);
+            }
+            else rec_.fill(enabledRecBranches_, p);
+
             tree_->Fill();
             numFills_++;
         }
     }
     else if (channel_ == "genMatch") {
+
+        // Initialize ALL vars:
+            ev_.flush();
+            dis_.flush();
+            gen_dis_.flush();
+            rec_.flush();
+            gen_.flush();
         
         auto mcParticles = c12.mcparts();
         auto recParticles = c12.getDetParticles();
@@ -286,26 +327,29 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
             auto& rec  = recParticles[bestMatchIndex];
             int det    = getDetector(rec->par()->getStatus());
+            int sec    = rec->getSector();
             float vz   = rec->par()->getVz();
 
-            // Initialize ALL vars:
-            ev_.flush();
-            dis_.flush();
-            gen_dis_.flush();
-            rec_.flush();
-            gen_.flush();
-
-            bool electronFilled = false;  
+            bool electronFound = false;  
             TLorentzVector lv_gen_ePrime;  
             TLorentzVector lv_ePrime; // will store the first electron’s 4-vector       
 
             if (gen_pid == 11) {
-                if (rec->getP() < 2) continue;
+                if (rec->getP() < 1) continue;
+
                 bool passesFC = ((det == 0 && FC_->passesFT(rec)) || 
                                  (det == 1 && FC_->passesDC(rec, torus_) && FC_->passesECAL(rec)));
                 if (!(passesFC && passesVertexCut(vz))) continue;
 
-                if (!electronFilled) {
+                if (det == 1) {
+                    float ePCAL  = rec->cal(1) ? rec->cal(1)->getEnergy() : 0;
+                    float eECIN  = rec->cal(4) ? rec->cal(4)->getEnergy() : 0;
+                    float eECOUT = rec->cal(7) ? rec->cal(7)->getEnergy() : 0;
+                    float sf = (ePCAL + eECIN + eECOUT) / rec->getP();
+                    if (!SF_->pass(sec, sf, rec->getP())) continue;
+                }
+
+                if (!electronFound) {
                     lv_gen_ePrime.SetPxPyPzE(v_gen_p.Px(), 
                                              v_gen_p.Py(), 
                                              v_gen_p.Pz(), 
@@ -315,7 +359,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                                          rec->par()->getPy(), 
                                          rec->par()->getPz(), 
                                          std::sqrt(ELECTRON_MASS * ELECTRON_MASS + rec->getP() * rec->getP()));
-                    electronFilled = true;
+                    electronFound = true;
                 } 
             } 
 
@@ -332,13 +376,14 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             }
 
             // If electron already found, repeat DIS fill for all subsequent particles
-            if (electronFilled) {
+            if (electronFound) {
                 gen_dis_.fill(lv_gen_ePrime, ebeam_);
                 dis_.fill(lv_ePrime, ebeam_);
             }
 
             ev_.fill(enabledEvBranches_, c12);
             gen_.fill(mcParticles, j);
+            
             if (gen_pid == 2212) {
                 double p_corr = rec->getP() + KC_->deltaP(rec->getP(), rec->getTheta(), det == 1);
                 double theta_corr = rec->getTheta() + KC_->deltaTheta(rec->getP(), rec->getTheta(), det == 1);
@@ -347,7 +392,6 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
                 if (phi_corr > M_PI) phi_corr -= 2*M_PI;
                 if (phi_corr < -M_PI) phi_corr += 2*M_PI;
-                
                 rec_.fill(enabledRecBranches_, rec, p_corr, theta_corr, phi_corr);
             }
             else rec_.fill(enabledRecBranches_, rec);
@@ -366,6 +410,13 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
     // Reject if not EPPI0 final state, according to eventbuilder:
     if (photons.size() < 2 || electrons.size() != 1 || protons.size() != 1) return;
 
+    ev_.flush();
+    e_.flush();
+    p_.flush();
+    g_.flush();
+    dis_.flush();
+    eppi0_.flush();
+
     clas12::region_particle* best_electron = nullptr;
     clas12::region_particle* best_proton   = nullptr;
     clas12::region_particle* best_g1       = nullptr;
@@ -379,15 +430,24 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
 
     for (const auto& ele : electrons) {
 
-        if (ele->getP() < 2) continue;
+        if (ele->getP() < 1) continue;
 
         // Reject if electron vertex isn't in target fiducial volume
         if (!passesVertexCut(ele->par()->getVz())) continue;
 
         int detEle = getDetector(ele->par()->getStatus());
+        int secEle = ele->getSector();
         // Reject if electron fails fiducial cuts (ONLY if cuts are listed!)
         if (detEle == 0 && !FC_->passesFT(ele)) continue;
         if (detEle == 1 && (!FC_->passesDC(ele, torus_) || !FC_->passesECAL(ele))) continue;
+
+        if (detEle == 1) {
+            float ePCAL  = ele->cal(1) ? ele->cal(1)->getEnergy() : 0;
+            float eECIN  = ele->cal(4) ? ele->cal(4)->getEnergy() : 0;
+            float eECOUT = ele->cal(7) ? ele->cal(7)->getEnergy() : 0;
+            float sf = (ePCAL + eECIN + eECOUT) / ele->getP();
+            if (!SF_->pass(secEle, sf, ele->getP())) continue;
+        }
 
         for (const auto& pro : protons) {
 
@@ -426,7 +486,6 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
                     //Reject if either photon is detected in FD and fails ECAL fiducial cuts (fails ONLY if ECAL cuts are listed!)
                     if ((det1 == 1 && !FC_->passesECAL(g1)) || (det2 == 1 && !FC_->passesECAL(g2))) continue;
 
-
                     TLorentzVector lv_g1, lv_g2;
                     lv_g1.SetXYZM(g1->par()->getPx(), g1->par()->getPy(), g1->par()->getPz(), 0.0);
                     lv_g2.SetXYZM(g2->par()->getPx(), g2->par()->getPy(), g2->par()->getPz(), 0.0);
@@ -452,13 +511,6 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
 
     // Reject if no suitable EPPI0 candidate has been found, i.e., best_electron == nullptr:
     if (!best_electron) return; 
-
-    ev_.flush();
-    e_.flush();
-    p_.flush();
-    g_.flush();
-    dis_.flush();
-    eppi0_.flush();
 
     ev_.fill(enabledEvBranches_, c12);
 

@@ -1,12 +1,30 @@
+#include <fstream>
+#include <iostream>
 #include "KinematicCorrections.h"
+#include "nlohmann/json.hpp"
 
+// Construct from JSON file
+KinematicCorrections::KinematicCorrections(const std::string& filename) {
+    std::ifstream f(filename);
+    if (!f.is_open()) {
+        std::cerr << "KinematicCorrections file not found: " << filename 
+                  << " → corrections disabled.\n";
+        enabled_ = false;
+        return;
+    }
+    nlohmann::json j;
+    f >> j;
+    *this = KinematicCorrections(j);
+}
+
+// Construct from JSON object
 KinematicCorrections::KinematicCorrections(const nlohmann::json& j) {
     if (j.is_null() || j.empty()) {
-        // Nothing to load, disable corrections
         enabled_ = false;
+        return;
     }
+    enabled_ = true;
     for (auto it = j.begin(); it != j.end(); ++it) {
-        enabled_ = true;
         CorrEntry entry;
         entry.func = makeProfileFunc(it.value()["form"].get<std::string>());
         entry.coeffsJson = it.value()["coeffs"];
@@ -15,7 +33,7 @@ KinematicCorrections::KinematicCorrections(const nlohmann::json& j) {
 }
 
 KinematicCorrections::CorrFunc KinematicCorrections::makeProfileFunc(const std::string& form) const {
-    if (form == "[0] + [1]/p + [2]/p^2")
+    if (form == "[0] + [1]/p + [2]/(p^2)")
         return [](const std::vector<double>& c, double p) { return c[0] + c[1]/p + c[2]/(p*p); };
     if (form == "[0] + [1]/p")
         return [](const std::vector<double>& c, double p) { return c[0] + c[1]/p; };

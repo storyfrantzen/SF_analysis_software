@@ -2,5 +2,6 @@
     "ebeam": 7.546,
     "torus": 1,
     "channel": "genOnly",
-    "isMC": true
+    "isMC": true,
+    "maxEvents": 5e5
 }

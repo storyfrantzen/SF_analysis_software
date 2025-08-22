@@ -12,6 +12,7 @@ def current_timestamp():
     return now.strftime("%m%d_%H%M")
 
 ROOT.gSystem.Load("/work/clas12/storyf/SF_analysis_software/build/install/lib/libBranchVarsDict.so")
+ROOT.EnableImplicitMT() 
 
 def get_adaptive_edges(tree, varname, n_bins, min_val, max_val, fine_bins=500):
     """
