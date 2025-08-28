@@ -96,7 +96,7 @@
     },
     "SFCuts": {
         "required": false,
-        "description": "Incorporate 3-sigma SF cuts for electrons",
+        "description": "Incorporate 3-sigma SF cuts and triangle cut for electrons",
         "keys": "Accepts either the str filepath to the output .json of pyMacros/getSFCuts.py, or the .json itself"
     },
     "outPrefix": {

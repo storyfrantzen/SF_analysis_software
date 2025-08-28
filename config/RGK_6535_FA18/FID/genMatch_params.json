@@ -4,6 +4,6 @@
     "channel": "genMatch",
     "isMC": true,
     "fiducialCuts": ["DCEdges_RGA", "FT_RGA", "ECAL_RGK", "ECALEdges_RGK", "CVT_RGA"],
-    "SFCuts": "/work/clas12/storyf/SF_analysis_software/config/cuts_and_corrections/RGK_6535_FA18/SF_sigma_cut_params.json",
+    "SFCuts": "/work/clas12/storyf/SF_analysis_software/config/RGK_6535_FA18/cuts_and_corrections/SF_sigma_cut_params.json",
     "outPrefix": "FID"
 }

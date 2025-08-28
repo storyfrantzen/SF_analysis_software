@@ -55,9 +55,18 @@ double SFCuts::sigma_p(int sec, double p) const {
     return evalPoly(coeffsMap.at(sec).sigma_coeffs, p);
 }
 
-bool SFCuts::pass(int sec, double sf, double p) const {
+// Note: currently, triangle cut is enabled IFF sigma cut is enabled.
+bool SFCuts::passTriangleCut(double ePCAL, double eECIN, double p, float yScale, float xScale, float hypotenuse, float HTCC_THRESHOLD) const {
+    if (!enabled_) return true;
+    if (p < HTCC_THRESHOLD) return true;
+    double y = ePCAL / p;
+    double x = eECIN / p;
+    return (y * yScale + x * xScale) > hypotenuse;
+}
+
+bool SFCuts::passSigmaCut(int sec, double sf, double p, float numSigma) const {
     if (!enabled_) return true;
     double mu = mu_p(sec, p);
     double sigma = sigma_p(sec, p);
-    return (sf > mu - 3 * sigma && sf < mu + 3 * sigma);
+    return (sf > mu - numSigma * sigma && sf < mu + numSigma * sigma);
 }

@@ -26,15 +26,12 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
     if (config.contains("kinCorrections")) {
         if (config["kinCorrections"].is_string()) {
             KC_ = std::make_unique<KinematicCorrections>(config["kinCorrections"].get<std::string>());
-        }
-        else if (config["kinCorrections"].is_object()) {
+        } else if (config["kinCorrections"].is_object()) {
             KC_ = std::make_unique<KinematicCorrections>(config["kinCorrections"]);
-        } 
-        else {
+        } else {
             KC_ = std::make_unique<KinematicCorrections>(nlohmann::json{}); 
         }
-    }
-    else KC_ = std::make_unique<KinematicCorrections>(nlohmann::json{});
+    } else KC_ = std::make_unique<KinematicCorrections>(nlohmann::json{});
 
     // --- SF Cuts ---
     if (config.contains("SFCuts")) {
@@ -45,8 +42,7 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
         } else {
             SF_ = std::make_unique<SFCuts>(nlohmann::json{}); // empty → no cuts
         }
-    } 
-    else SF_ = std::make_unique<SFCuts>(nlohmann::json{}); // default pass-through
+    } else SF_ = std::make_unique<SFCuts>(nlohmann::json{}); // default pass-through
     
 
     std::stringstream ss;
@@ -74,19 +70,13 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
     if (channel_ == "genOnly") {
         tree_->Branch("gen_dis", "GenVars", &gen_dis_);
         tree_->Branch("gen", "GenVars", &gen_);
-    }
-
-    else if (channel_ == "inclusiveRec") {
+    } else if (channel_ == "inclusiveRec") {
         tree_->Branch("rec", "RecVars", &rec_);
-    }
-
-    else if (channel_ == "genMatch") {
+    } else if (channel_ == "genMatch") {
         tree_->Branch("gen_dis",  "DISVars",     &gen_dis_);
         tree_->Branch("gen",      "GenVars",     &gen_);
         tree_->Branch("rec",      "RecVars",     &rec_);
-    }
-
-    else if (channel_ == "eppi0") {
+    } else if (channel_ == "eppi0") {
         tree_->Branch("e",     "RecVars",     &e_);
         tree_->Branch("p",     "RecVars",     &p_);
         tree_->Branch("g",     "RecVars",     &g_);
@@ -242,7 +232,8 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                     float eECIN  = p->cal(4) ? p->cal(4)->getEnergy() : 0;
                     float eECOUT = p->cal(7) ? p->cal(7)->getEnergy() : 0;
                     float sf = (ePCAL + eECIN + eECOUT) / p->getP();
-                    if (!SF_->pass(sector, sf, p->getP())) continue;
+                    if (!SF_->passTriangleCut(ePCAL, eECIN, p->getP())) continue;
+                    if (!SF_->passSigmaCut(sector, sf, p->getP())) continue;
                 }
 
                 if (!electronFound) {
@@ -346,7 +337,8 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                     float eECIN  = rec->cal(4) ? rec->cal(4)->getEnergy() : 0;
                     float eECOUT = rec->cal(7) ? rec->cal(7)->getEnergy() : 0;
                     float sf = (ePCAL + eECIN + eECOUT) / rec->getP();
-                    if (!SF_->pass(sec, sf, rec->getP())) continue;
+                    if (!SF_->passTriangleCut(ePCAL, eECIN, rec->getP())) continue;
+                    if (!SF_->passSigmaCut(sec, sf, rec->getP())) continue;
                 }
 
                 if (!electronFound) {
@@ -430,6 +422,7 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
 
     for (const auto& ele : electrons) {
 
+        // Reject if electron has momentum less than threshold
         if (ele->getP() < 1) continue;
 
         // Reject if electron vertex isn't in target fiducial volume
@@ -446,13 +439,17 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
             float eECIN  = ele->cal(4) ? ele->cal(4)->getEnergy() : 0;
             float eECOUT = ele->cal(7) ? ele->cal(7)->getEnergy() : 0;
             float sf = (ePCAL + eECIN + eECOUT) / ele->getP();
-            if (!SF_->pass(secEle, sf, ele->getP())) continue;
+            if (!SF_->passTriangleCut(ePCAL, eECIN, ele->getP())) continue;
+            if (!SF_->passSigmaCut(secEle, sf, ele->getP())) continue;
         }
 
         for (const auto& pro : protons) {
 
             // Reject if proton vertex isn't in target fiducial volume
             if (!passesVertexCut(pro->par()->getVz())) continue;
+
+            // Reject if proton has momentum less than threshold (Yijie + Bobby)
+            if (ele->getP() < 0.3) continue;
 
             int detPro = getDetector(pro->par()->getStatus());
             // Reject if proton fails fiducial cuts (ONLY if cuts are listed!)
@@ -471,8 +468,12 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
                     // Reject if either photon is detected in CD
                     if (det1 == 2 || det2 == 2) continue;
 
+                    // Reject if either photon has unphysical beta
                     if (g1->par()->getBeta() < 0.9 || g1->par()->getBeta() > 1.1) continue;
                     if (g2->par()->getBeta() < 0.9 || g2->par()->getBeta() > 1.1) continue;
+
+                    // Reject if either photon has momentum less than threshold (Bobby's thesis):
+                    if (g1->getP() < 0.4  || g2->getP() < 0.4) continue;
 
                     int sec1 = g1->getSector();
                     int sec2 = g2->getSector();
@@ -548,6 +549,9 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
     dis_.fill(lv_ePrime, ebeam_);
 
     eppi0_.fill(lv_ePrime, lv_pPrime, lv_bestPi0, ebeam_);
+
+    // EXCLUSIVITY CUTS:
+    if (eppi0_.pT_miss < 0.2) return;
 
     // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region
     if (!channelCheck(dis_.Q2, dis_.W, dis_.y)) return;

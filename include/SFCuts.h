@@ -16,7 +16,9 @@ public:
 
     double mu_p(int sec, double p) const;
     double sigma_p(int sec, double p) const;
-    bool pass(int sec, double sf, double p) const;
+    bool passTriangleCut(double ePCAL, double eECIN, double p, float yScale = 1, float xScale = (1/0.84), 
+                         float hypotenuse = 0.17, float HTCC_THRESHOLD = 4.5) const;
+    bool passSigmaCut(int sec, double sf, double p, float numSigma = 3) const;
 
 private:
     bool enabled_ = false;

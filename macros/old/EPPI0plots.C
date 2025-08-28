@@ -82,21 +82,21 @@ void EPPI0plots(const char* inputFilePath = "input.root", const char* outFilePat
     TH1D* h_deltaPhi = new TH1D("h_deltaPhi", "#Delta #Phi #equiv #Phi _{#pi} - #Phi _{epX}; #Delta #Phi [Deg]; Counts", 200, -10, 10);
 
     TH2D* h_Q2_vs_Xb = new TH2D("h_Q2_vs_Xb", "Q^{2} vs x_{B}; x_{B}; Q^{2} [GeV^{2}]", 
-                        100, 0.0, 0.7, 100, 0.5, 7);
+                        50, 0.0, 0.7, 50, 0.5, 7);
     TH2D* h_t_vs_phiT = new TH2D("h_t_vs_phiT", "-t vs. #Phi_{T}; #Phi_{T} [deg]; -t [Gev^{2}]", 
-                        180, 0, 360, 100, 0, 2);
+                        180, 0, 360, 50, 0, 2);
     TH2D* h_e_theta_vs_p = new TH2D("h_e_theta_vs_p", "Electron #theta vs p; Electron Momentum p [GeV]; #theta [deg]", 
-                        100, 1, 4.5, 100, 0, 40);
+                        50, 1, 4.5, 80, 0, 40);
     TH2D* h_e_phi_vs_p = new TH2D("h_e_phi_vs_p", "Electron #Phi vs p; Electron Momentum p [GeV]; #Phi [deg]", 
-                        100, 1, 4.5, 100, -180, 180);
+                        50, 1, 4.5, 180, -180, 180);
     TH2D* h_p_theta_vs_p = new TH2D("h_p_theta_vs_p", "Proton #theta vs p; Proton Momentum p [GeV]; #theta [deg]", 
-                        100, 0, 4.5, 100, 0, 90);
+                        50, 0, 4.5, 100, 0, 90);
     TH2D* h_p_phi_vs_p = new TH2D("h_p_phi_vs_p", "Proton #Phi vs p; Proton Momentum p [GeV]; #Phi [deg]", 
-                        100, 0, 4.5, 100, -180, 180);
+                        50, 0, 4.5, 100, -180, 180);
     TH2D* h_g_theta_vs_p = new TH2D("h_g_theta_vs_p", "Photon #theta vs p; Photon Momentum p [GeV]; #theta [deg]", 
-                        100, 0, 5, 100, 0, 40);
+                        50, 0, 5, 100, 0, 40);
     TH2D* h_g_phi_vs_p = new TH2D("h_g_phi_vs_p", "Photon #phi vs p; Photon Momentum p [GeV]; #Phi [deg]", 
-                        100, 0, 4.5, 200, -180, 180);
+                        50, 0, 4.5, 200, -180, 180);
     TH2D* h_m2_epX_vs_px_miss = new TH2D("h_m2_epX_vs_px_miss", "M_{epX}^{2} vs #DeltaP_{x}; #Delta P_{x} [GeV]; M_{epX}^{2} [GeV^{2}]",
                         100, -0.3, 0.3, 200, -0.5, 0.5);
     TH2D* h_m2_epX_vs_py_miss = new TH2D("h_m2_epX_vs_py_miss", "M_{epX}^{2} vs #Delta P_{y}; #Delta P_{y} [GeV]; M_{epX}^{2} [GeV^{2}]",
