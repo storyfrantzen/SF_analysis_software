@@ -59,6 +59,9 @@ def drawElectronPlots(df, branchPrefix, leaf_list, hist_name=None):
         E_ECIN_var = f"{branchPrefix}.E_ECIN"
         E_ECOUT_var = f"{branchPrefix}.E_ECOUT"
         df = df.Define("SF", f"({E_PCAL_var} + {E_ECIN_var} + {E_ECOUT_var}) / {p_var}")
+        e_hists["e_E_PCAL"] = df.Histo1D(("e_E_PCAL", "Electron E_{PCAL}; E_{PCAL} [GeV]; Counts", 10, 0, 2), E_PCAL_var)
+        e_hists["e_E_ECIN"] = df.Histo1D(("e_E_ECIN", "Electron E_{ECIN}; E_{ECIN} [GeV]; Counts", 10, 0, 1), E_ECIN_var)
+        e_hists["e_E_ECOUT"] = df.Histo1D(("e_E_ECOUT", "Electron E_{ECOUT}; E_{ECOUT} [GeV]; Counts", 10, 0, 1), E_ECOUT_var)
         e_hists["e_SF_vs_p"] = df.Histo2D(("e_SF_vs_p", "Electron Sampling Fraction vs p; p [GeV]; E_{tot} / p", 
                                    75, 0, 7, 75, 0, .4), p_var, "SF")
 
@@ -153,6 +156,15 @@ def drawPhotonPlots(df, branchPrefix, leaf_list, hist_name=None):
     g_hists["g_sector"] = df.Histo1D(("g_sector", "Photon Sector; Sector; Counts", 6, 1, 7), sector_var)
     g_hists["g_det"] = df.Histo1D(("g_det", "Photon Detector; Detector; Counts", 3, 0, 3), det_var)
     g_hists["g_beta_vs_p"] = df.Histo2D(("g_beta_vs_p", "Photon #beta vs p; p [GeV]; #beta", 500, 0, 10, 500, 0, 2), p_var, beta_var)
+
+    if all(v in leaf_list for v in ["E_PCAL", "E_ECIN", "E_ECOUT"]):
+        E_PCAL_var = f"{branchPrefix}.E_PCAL"
+        E_ECIN_var = f"{branchPrefix}.E_ECIN"
+        E_ECOUT_var = f"{branchPrefix}.E_ECOUT"
+        g_hists["g_E_PCAL"] = df.Histo1D(("g_E_PCAL", "Photon E_{PCAL}; E_{PCAL} [GeV]; Counts", 10, 0, 2), E_PCAL_var)
+        g_hists["g_E_ECIN"] = df.Histo1D(("g_E_ECIN", "Photon E_{ECIN}; E_{ECIN} [GeV]; Counts", 10, 0, 1), E_ECIN_var)
+        g_hists["g_E_ECOUT"] = df.Histo1D(("g_E_ECOUT", "Photon E_{ECOUT}; E_{ECOUT} [GeV]; Counts", 10, 0, 1), E_ECOUT_var)
+    
 
     if hist_name:
         return {hist_name: g_hists[hist_name]} if hist_name in g_hists else {}

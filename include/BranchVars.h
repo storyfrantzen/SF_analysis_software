@@ -77,15 +77,17 @@ struct EPPI0Vars : public TObject {
     double pi0_p, pi0_theta, pi0_phi, pi0_deltaPhi;
     double m_gg, m2_miss, m2_epX, m2_epi0X;
     double E_miss, px_miss, py_miss, pz_miss, pT_miss;
+    double theta_e_g1, theta_e_g2, theta_g1_g2;
     double t, trentoPhi;
     
     void flush() {
         pi0_p = pi0_theta = pi0_phi = pi0_deltaPhi = NAN;
         m_gg = m2_miss = m2_epX = m2_epi0X = NAN;
         E_miss = px_miss = py_miss = pz_miss = pT_miss = NAN;
+        theta_e_g1 = theta_e_g2 = theta_g1_g2 = NAN;
         t = trentoPhi = NAN;
     }
-    void fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_pPrime, const TLorentzVector& lv_pi0, 
-                double ebeam, double m_target=PROTON_MASS);
+    void fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_pPrime, 
+              const TLorentzVector& lv_g1, const TLorentzVector& lv_g2, double ebeam, double m_target=PROTON_MASS);
     ClassDef(EPPI0Vars, 1);
 };

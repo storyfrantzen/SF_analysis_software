@@ -156,11 +156,12 @@ void DISVars::fill(const TLorentzVector& lv_ePrime, double ebeam, double m_targe
 
 };
 
-void EPPI0Vars::fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_pPrime, const TLorentzVector& lv_pi0, 
-                    double ebeam, double m_target) {
+void EPPI0Vars::fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_pPrime, 
+                     const TLorentzVector& lv_g1, const TLorentzVector& lv_g2, double ebeam, double m_target) {
     // Beam and target 4-vectors:
     TLorentzVector lv_beam(0, 0, ebeam, ebeam);
     TLorentzVector lv_target(0, 0, 0, m_target);
+    TLorentzVector lv_pi0 = lv_g1 + lv_g2;
 
     TLorentzVector lv_missing = lv_beam + lv_target - lv_ePrime - lv_pPrime - lv_pi0;
     TLorentzVector lv_epX     = lv_beam + lv_target - lv_ePrime - lv_pPrime;
@@ -169,7 +170,7 @@ void EPPI0Vars::fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_p
     pi0_p         = lv_pi0.P();
     pi0_theta     = lv_pi0.Theta();
     pi0_phi       = lv_pi0.Phi();
-    pi0_deltaPhi  = lv_pi0.Phi() - lv_epX.Phi();
+    pi0_deltaPhi  = TVector2::Phi_mpi_pi(lv_pi0.Phi() - lv_epX.Phi());
 
     m_gg          = lv_pi0.M();
     m2_miss       = lv_missing.M2();
@@ -180,6 +181,10 @@ void EPPI0Vars::fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_p
     py_miss       = lv_missing.Py();
     pz_miss       = lv_missing.Pz();
     pT_miss       = lv_missing.Pt();
+
+    theta_e_g1    = lv_ePrime.Vect().Angle(lv_g1.Vect());
+    theta_e_g2    = lv_ePrime.Vect().Angle(lv_g2.Vect());
+    theta_g1_g2   = lv_g1.Vect().Angle(lv_g2.Vect());
 
     // NOTE: "t" is implicitly -t!
     t = -1 * (lv_pPrime - lv_target).M2();

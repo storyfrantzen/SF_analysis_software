@@ -114,7 +114,7 @@ int ProcessManager::getDetector(int status) {
         if (absStatus >= 4000 && absStatus < 5000) return 2; // CD
 
         return -999; // Unknown detector
-    }
+}
 
 bool ProcessManager::channelCheck(float Q2, float W, float y) {
     return Q2 >= 1 && W >= 2 && y <= 0.8;
@@ -151,6 +151,18 @@ void ProcessManager::finalize() {
     }
 }
 
+auto getPhotonCalE = [](clas12::region_particle* g) {
+    int det = ProcessManager::getDetector(g->par()->getStatus());
+    if (det == 0) {
+        return g->ft(FTCAL) ? g->ft(FTCAL)->getEnergy() : 0.0;
+    } else if (det == 2) {
+        return 0.0;
+    }
+    return (g->cal(1) ? g->cal(1)->getEnergy() : 0.0) + 
+           (g->cal(4) ? g->cal(4)->getEnergy() : 0.0) + 
+           (g->cal(7) ? g->cal(7)->getEnergy() : 0.0);
+};
+
 //////////////////////////////////////////////////////////
 // MAIN WORKFLOW PERFORMED HERE: //
 //////////////////////////////////////////////////////////
@@ -182,20 +194,15 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                 // Calculate and store only for the first electron
                 lv_ePrime.SetVectM(v_p, ELECTRON_MASS);
                 electronFound = true;
-            } 
-
-            else if (!electronFound) {
+            } else if (!electronFound) {
                 dis_.flush();
-            }
-
-            else dis_.fill(lv_ePrime, ebeam_);
+            } else dis_.fill(lv_ePrime, ebeam_);
 
             tree_->Fill();
             numFills_++;
         }
 
-    }
-    else if (channel_ == "inclusiveRec") {
+    } else if (channel_ == "inclusiveRec") {
         
         auto recParticles = c12.getDetParticles();   
         int numRec = recParticles.size();     
@@ -226,7 +233,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                     if (i == 0) return;
                     else continue;
                 }
-
+                
                 if (det == 1) {
                     float ePCAL  = p->cal(1) ? p->cal(1)->getEnergy() : 0;
                     float eECIN  = p->cal(4) ? p->cal(4)->getEnergy() : 0;
@@ -244,7 +251,6 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                     electronFound = true;
                 } 
             }
-
             else if (pid == 2212) {
                 bool passesFC = ((det == 1 && FC_->passesDC(p, torus_)) || 
                                  (det == 2 && FC_->passesCVT(p)));
@@ -258,7 +264,6 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
             // If electron already found, repeat DIS fill for all subsequent particles
             if (electronFound) dis_.fill(lv_ePrime, ebeam_);
-
             ev_.fill(enabledEvBranches_, c12);
             if (pid == 2212) {
                 double p_corr = p->getP() + KC_->deltaP(p->getP(), p->getTheta(), det == 1);
@@ -269,9 +274,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                 if (phi_corr > M_PI) phi_corr -= 2*M_PI;
                 if (phi_corr < -M_PI) phi_corr += 2*M_PI;
                 rec_.fill(enabledRecBranches_, p, p_corr, theta_corr, phi_corr);
-            }
-            else rec_.fill(enabledRecBranches_, p);
-
+            } else rec_.fill(enabledRecBranches_, p);
             tree_->Fill();
             numFills_++;
         }
@@ -326,6 +329,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             TLorentzVector lv_ePrime; // will store the first electron’s 4-vector       
 
             if (gen_pid == 11) {
+                // Reject if electron has momentum less than threshold
                 if (rec->getP() < 1) continue;
 
                 bool passesFC = ((det == 0 && FC_->passesFT(rec)) || 
@@ -356,6 +360,9 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             } 
 
             else if (gen_pid == 2212) {
+                // Reject if proton has momentum less than threshold (Yijie + Bobby)
+                if (rec->getP() < 0.3) continue;
+
                 bool passesFC = ((det == 1 && FC_->passesDC(rec, torus_)) || 
                                  (det == 2 && FC_->passesCVT(rec)));
                 if (!(passesFC && passesVertexCut(vz))) return;
@@ -413,12 +420,11 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
     clas12::region_particle* best_proton   = nullptr;
     clas12::region_particle* best_g1       = nullptr;
     clas12::region_particle* best_g2       = nullptr;
-    
-    TLorentzVector lv_bestPi0;
+
+    TLorentzVector lv_g1, lv_g2;
     int detPi0;
 
-    double  leastDeltaM = 999;
-    double  m_bestPi0 = 999;
+    double leastDeltaM = 999;
 
     for (const auto& ele : electrons) {
 
@@ -445,11 +451,11 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
 
         for (const auto& pro : protons) {
 
+            // Reject if proton has momentum less than threshold (Yijie + Bobby)
+            if (pro->getP() < 0.3) continue;
+
             // Reject if proton vertex isn't in target fiducial volume
             if (!passesVertexCut(pro->par()->getVz())) continue;
-
-            // Reject if proton has momentum less than threshold (Yijie + Bobby)
-            if (ele->getP() < 0.3) continue;
 
             int detPro = getDetector(pro->par()->getStatus());
             // Reject if proton fails fiducial cuts (ONLY if cuts are listed!)
@@ -465,21 +471,24 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
                     int det1 = getDetector(g1->par()->getStatus());
                     int det2 = getDetector(g2->par()->getStatus());
 
+                    int sec1 = g1->getSector();
+                    int sec2 = g2->getSector();
+
                     // Reject if either photon is detected in CD
                     if (det1 == 2 || det2 == 2) continue;
+
+                    // Reject if photons are not detected in same sector
+                    if (sec1 != sec2) continue;
+
+                    // Reject if either photon has momentum less than threshold (Bobby's thesis):
+                    if (g1->getP() < 0.4  || g2->getP() < 0.4) continue;
 
                     // Reject if either photon has unphysical beta
                     if (g1->par()->getBeta() < 0.9 || g1->par()->getBeta() > 1.1) continue;
                     if (g2->par()->getBeta() < 0.9 || g2->par()->getBeta() > 1.1) continue;
 
-                    // Reject if either photon has momentum less than threshold (Bobby's thesis):
-                    if (g1->getP() < 0.4  || g2->getP() < 0.4) continue;
-
-                    int sec1 = g1->getSector();
-                    int sec2 = g2->getSector();
-
-                    // Reject if photons are not detected in same sector
-                    if (sec1 != sec2) continue;
+                    // Reject if either photon fails calorimeter energy threshold
+                    if (getPhotonCalE(g1) < 0.15 || getPhotonCalE(g2) < 0.15) continue;
 
                     // Reject if either photon is detected in FT and fails FT fiducial cuts (fails ONLY if FTstandardCut is listed!)
                     if ((det1 == 0 && !FC_->passesFT(g1)) || (det2 == 0 && !FC_->passesFT(g2))) continue;
@@ -487,19 +496,16 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
                     //Reject if either photon is detected in FD and fails ECAL fiducial cuts (fails ONLY if ECAL cuts are listed!)
                     if ((det1 == 1 && !FC_->passesECAL(g1)) || (det2 == 1 && !FC_->passesECAL(g2))) continue;
 
-                    TLorentzVector lv_g1, lv_g2;
                     lv_g1.SetXYZM(g1->par()->getPx(), g1->par()->getPy(), g1->par()->getPz(), 0.0);
                     lv_g2.SetXYZM(g2->par()->getPx(), g2->par()->getPy(), g2->par()->getPz(), 0.0);
                     TLorentzVector lv_candidatePi0 = lv_g1 + lv_g2;
 
                     double deltaM = std::abs(lv_candidatePi0.M() - PI0_MASS);
-                    if (deltaM > 0.025) continue;
+                    if (deltaM > 0.05) continue;
 
                     if (deltaM < leastDeltaM) {
-                        m_bestPi0      = lv_candidatePi0.M();
                         detPi0         = det1; // Assign to pi0 the detector of the photon
                         leastDeltaM    = deltaM;
-                        lv_bestPi0     = lv_candidatePi0;
                         best_electron  = ele;
                         best_proton    = pro;
                         best_g1        = g1;
@@ -548,10 +554,16 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
     
     dis_.fill(lv_ePrime, ebeam_);
 
-    eppi0_.fill(lv_ePrime, lv_pPrime, lv_bestPi0, ebeam_);
+    lv_g1.SetXYZM(best_g1->par()->getPx(), best_g1->par()->getPy(), best_g1->par()->getPz(), 0.0);
+    lv_g2.SetXYZM(best_g2->par()->getPx(), best_g2->par()->getPy(), best_g2->par()->getPz(), 0.0);
+
+    eppi0_.fill(lv_ePrime, lv_pPrime, lv_g1, lv_g2, ebeam_);
 
     // EXCLUSIVITY CUTS:
-    if (eppi0_.pT_miss < 0.2) return;
+    if (eppi0_.E_miss > 1) return;
+    if (eppi0_.pT_miss > 0.2) return;
+    if (eppi0_.theta_e_g1 * 180.0/M_PI < 4 || eppi0_.theta_e_g2 * 180.0/M_PI < 4) return;
+    if (eppi0_.theta_g1_g2 * 180.0/M_PI < 1) return;
 
     // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region
     if (!channelCheck(dis_.Q2, dis_.W, dis_.y)) return;

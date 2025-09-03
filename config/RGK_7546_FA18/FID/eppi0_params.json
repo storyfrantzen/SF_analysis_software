@@ -1,0 +1,20 @@
+{
+    "ebeam": 7.546,
+    "torus": 1,
+    "channel": "eppi0",
+    "branches": {
+        "event":    ["numElectrons", "numProtons", "numPhotons"],
+        "electron": ["vz", "pz", "xFT", "yFT", "xDC1", "yDC1", "xDC2", "yDC2", "xDC3", "yDC3", "xPCAL", "yPCAL", 
+                     "uPCAL", "vPCAL", "wPCAL", "uECIN", "vECIN", "wECIN", "uECOUT", "vECOUT", "wECOUT",
+                     "E_PCAL", "E_ECIN", "E_ECOUT"],
+        "proton":   ["vz", "pz", "xDC1", "yDC1", "xDC2", "yDC2", "xDC3", "yDC3",
+                     "edge_cvt1", "edge_cvt3", "edge_cvt5", "edge_cvt7", "edge_cvt12", "theta_cvt", "phi_cvt"],
+        "photon":   ["vz", "xFT", "yFT", "xPCAL", "yPCAL", 
+                     "uPCAL", "vPCAL", "wPCAL", "uECIN", "vECIN" ,"wECIN", "uECOUT", "vECOUT", "wECOUT",
+                     "E_PCAL", "E_ECIN", "E_ECOUT"]
+    },
+    "fiducialCuts": ["DCEdges_RGA", "FT_RGA", "ECAL_RGK", "ECALEdges_RGK", "CVT_RGA"],
+    "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
+    "SFCuts": "/work/clas12/storyf/SF_analysis_software/config/RGK_7546_FA18/cuts_and_corrections/SF_sigma_cut_params.json",
+    "outPrefix": "FID"
+}
