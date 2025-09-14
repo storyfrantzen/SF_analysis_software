@@ -343,9 +343,9 @@ plot_integrated_proton_deltap_vs_p(df_pro)
 #theta_edges = np.linspace(35, 70, 13) if args.isCD else np.linspace(12, 44, 25)
 
 if args.isCD:
-    theta_edges = get_adaptive_edges_numpy(df_pro, "theta_deg", n_bins=10, min_val=37, max_val=70)
+    theta_edges = get_adaptive_edges_numpy(df_pro, "theta_deg", n_bins=10, min_val=40, max_val=58)
 else:
-    theta_edges = get_adaptive_edges_numpy(df_pro, "theta_deg", n_bins=24, min_val=15, max_val=44)
+    theta_edges = get_adaptive_edges_numpy(df_pro, "theta_deg", n_bins=24, min_val=15, max_val=40)
 
 # ---------------------------
 # Configs for binned fits

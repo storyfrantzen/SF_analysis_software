@@ -3,39 +3,96 @@ import ROOT
 import argparse
 import sys
 
-def check_branches(tree, branches):
-    missing = [b for b in branches if not tree.GetBranch(b)]
-    if missing:
-        print("\nERROR: Missing required branches in the TTree 'Events':")
-        for mb in missing:
-            print(f"  - {mb}")
-        print("\nPlease ensure the input ROOT file contains all required branches.")
-        print("Required branches:")
-        for b in branches:
-            print(f"  {b}")
-        return False
-    return True
+def fit_histogram(hist, func_str, fit_range, init_params=None, outFile=None):
+    """
+    Fits a histogram with the specified function, draws it with ±3σ lines,
+    and saves the canvas into the provided ROOT file.
+
+    Parameters
+    ----------
+    hist : ROOT.TH1
+        Histogram to fit.
+    func_str : str
+        Fit function string, e.g. "gaus(0)+pol1(3)".
+    fit_range : tuple
+        (min, max) range for the fit.
+    init_params : list, optional
+        Initial parameters for the fit.
+    outFile : ROOT.TFile, optional
+        ROOT file to save the canvas to.
+    """
+    # Determine approximate peak
+    peak = hist.GetBinCenter(hist.GetMaximumBin())
+    
+    # Create fit function
+    f = ROOT.TF1(f"f_{hist.GetName()}", func_str, *fit_range)
+
+    # Set initial parameters
+    if init_params:
+        for i, val in enumerate(init_params):
+            f.SetParameter(i, val)
+    else:
+        # Default example for gaus(0)+pol1(3) (6 params)
+        f.SetParameters(hist.GetMaximum(), peak, 0.01, 0, 0, 0)
+
+    # Perform fit quietly
+    hist.Fit(f, "RQ")
+
+    # Create canvas
+    c = ROOT.TCanvas(f"c_{hist.GetName()}", f"Fit {hist.GetName()}", 800, 600)
+    hist.Draw()      # Draw histogram
+    f.Draw("SAME")   # Draw fit function on top
+
+    # ±3σ lines
+    mean = f.GetParameter(1)
+    sigma = f.GetParameter(2)
+    lines = []  # keep references
+    for shift in [-3, 3]:
+        line = ROOT.TLine(mean + shift*sigma, 0, mean + shift*sigma, hist.GetMaximum())
+        line.SetLineColor(ROOT.kRed)
+        line.SetLineStyle(2)  # dashed
+        line.SetLineWidth(2)
+        line.Draw("SAME")
+        lines.append(line) # keep reference!
+    
+    # Mean line (blue solid)
+    mean_line = ROOT.TLine(mean, 0, mean, hist.GetMaximum())
+    mean_line.SetLineColor(ROOT.kBlue)
+    mean_line.SetLineStyle(2)
+    mean_line.SetLineWidth(1)
+    mean_line.Draw("SAME")
+    lines.append(mean_line)
+
+    c.Update()
+
+    # Save canvas to ROOT file if provided
+    if outFile:
+        outFile.cd()
+        c.Write()
+
+    return f
+
+
+# ─── Specialized Fits ─────────────────────
+def fit_mgg(hist, outFile=None):
+    return fit_histogram(hist, "gaus(0)+pol1(3)", (0.098, 0.17),
+                            init_params=[hist.GetMaximum(), 0.135, 0.01, 10, -1], outFile=outFile)
+
+def fit_m2_epX(hist, outFile=None):
+    return fit_histogram(hist, "gaus(0)+pol1(3)", (-0.2, 0.2), outFile=outFile)
+
+def fit_m2_epi0X(hist, outFile=None):
+    return fit_histogram(hist, "gaus(0)+pol1(3)", (0.5, 1.5), outFile=outFile)
+
+def fit_m_epi0X(hist, outFile=None):
+    return fit_histogram(hist, "gaus(0)+pol1(3)", (0.8, 1.1), outFile=outFile)
+
+def fit_E_miss(hist, outFile=None):
+    return fit_histogram(hist, "gaus(0)+pol1(3)", (-0.2, 0.4), outFile=outFile)
 
 
 def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
     ROOT.gSystem.Load("/work/clas12/storyf/SF_analysis_software/build/install/lib/libBranchVarsDict.so")
-
-    # Required branches
-    required_branches = [
-        "event.helicity",
-        "dis.Q2","dis.nu","dis.Xb","dis.y","dis.W",
-        "e.p","e.theta","e.phi","e.vz","e.chi2pid","e.det","e.sector",
-        "e.E_PCAL","e.E_ECIN","e.E_ECOUT",
-        "e.xDC1","e.yDC1","e.xDC2","e.yDC2","e.xDC3","e.yDC3",
-        "p.p","p.theta","p.phi","p.vz","p.chi2pid","p.det","p.sector",
-        "p.edge_cvt1","p.edge_cvt3","p.edge_cvt5","p.edge_cvt7","p.edge_cvt12",
-        "p.theta_cvt","p.phi_cvt",
-        "p.xDC1","p.yDC1","p.xDC2","p.yDC2","p.xDC3","p.yDC3",
-        "g.p","g.theta","g.phi","g.chi2pid","g.det","g.sector",
-        "g.E_PCAL","g.E_ECIN","g.E_ECOUT",
-        "e.vPCAL","e.wPCAL","e.vECIN","e.wECIN","e.vECOUT","e.wECOUT","e.uECOUT",
-        "g.vPCAL","g.wPCAL","g.vECIN","g.wECIN","g.vECOUT","g.wECOUT","g.uECOUT"
-    ]
 
     f = ROOT.TFile.Open(inputFilePath)
     if not f or f.IsZombie():
@@ -46,8 +103,6 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
     if not tree:
         print("Could not find tree 'Events' in file.")
         return
-
-    check_branches(tree, required_branches)
 
     # ─── Histograms ─────────────────────────────
     histos1D = {
@@ -67,6 +122,8 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
         "h_m2_epX_pCD": ROOT.TH1D("h_m2_epX_pCD", "pCD M_{epX}^{2}; M_{epX}^{2} [GeV^{2}]; Counts", 200, -1, 4),
         "h_m2_epi0X_pFD": ROOT.TH1D("h_m2_epi0X_pFD", "pFD M_{e#piX}^{2}; M_{e#piX}^{2} [GeV^{2}]; Counts", 200, -1, 4),
         "h_m2_epi0X_pCD": ROOT.TH1D("h_m2_epi0X_pCD", "pCD M_{e#piX}^{2}; M_{e#piX}^{2} [GeV^{2}]; Counts", 200, -1, 4),
+        "h_m_epi0X_pFD": ROOT.TH1D("h_m_epi0X_pFD", "pFD M_{e#piX}; M_{e#piX} [GeV]; Counts", 200, -1, 4),
+        "h_m_epi0X_pCD": ROOT.TH1D("h_m_epi0X_pCD", "pCD M_{e#piX}; M_{e#piX} [GeV]; Counts", 200, -1, 4),
         "h_px_miss": ROOT.TH1D("h_px_miss", "Missing Momentum #Delta P_{x}; #Delta P_{x} [GeV]; Counts", 200, -0.8, 0.8),
         "h_py_miss": ROOT.TH1D("h_py_miss", "Missing Momentum #Delta P_{y}; #Delta P_{y} [GeV]; Counts", 200, -0.8, 0.8),
         "h_pz_miss": ROOT.TH1D("h_pz_miss", "Missing Momentum #Delta P_{z}; #Delta P_{z} [GeV]; Counts", 200, -0.3, 0.6),
@@ -114,6 +171,9 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
     tree.Draw("eppi0.m2_epX >> h_m2_epX_pCD", "p.det==2")
     tree.Draw("eppi0.m2_epi0X >> h_m2_epi0X_pFD", "p.det==1")
     tree.Draw("eppi0.m2_epi0X >> h_m2_epi0X_pCD", "p.det==2")
+    #tree.Draw("sqrt(eppi0.m2_epi0X) >> h_m_epi0X_pFD", "p.det==1")
+    #tree.Draw("sqrt(eppi0.m2_epi0X) >> h_m_epi0X_pCD", "p.det==2")
+
     tree.Draw("eppi0.px_miss >> h_px_miss")
     tree.Draw("eppi0.py_miss >> h_py_miss")
     tree.Draw("eppi0.pz_miss >> h_pz_miss")
@@ -141,29 +201,55 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
 
     outFile = ROOT.TFile.Open(outFilePath, "RECREATE")
 
-    # ─── Fit Mgg histograms ─────────────────────
-    def fit_mgg(hist):
-        peak = hist.GetBinCenter(hist.GetMaximumBin())
-        f = ROOT.TF1("gaus+pol1", "gaus(0)+pol1(3)", 0.098, 0.17)
-        f.SetParameters(hist.GetMaximum(), peak, 0.01, 10, -1)
-        hist.Fit(f, "RQ")
-        # Make sure the fit gets drawn
-        c = ROOT.TCanvas(f"c_{hist.GetName()}", "", 800, 600)
-        hist.Draw()        # Draw histogram first
-        f.Draw("SAME")     # Draw the fit on top
-        c.Write()          # Save the canvas to the output file
-        return f
 
-    fit_mgg(histos1D["h_mgg_pFD"])
-    fit_mgg(histos1D["h_mgg_pCD"])
+    # # ─── Run Fits for pFD and pCD ─────────────────────
+    fits = {}
+    results = {}
+
+    # Mgg
+    fits["mgg_pFD"]    = fit_mgg(histos1D["h_mgg_pFD"], outFile=outFile)
+    fits["mgg_pCD"]    = fit_mgg(histos1D["h_mgg_pCD"], outFile=outFile)
+
+    # MM²(epX)
+    fits["m2_epX_pFD"] = fit_m2_epX(histos1D["h_m2_epX_pFD"], outFile=outFile)
+    fits["m2_epX_pCD"] = fit_m2_epX(histos1D["h_m2_epX_pCD"], outFile=outFile)
+
+    # MM²(epi0X)
+    fits["m2_epi0X_pFD"] = fit_m2_epi0X(histos1D["h_m2_epi0X_pFD"], outFile=outFile)
+    fits["m2_epi0X_pCD"] = fit_m2_epi0X(histos1D["h_m2_epi0X_pCD"], outFile=outFile)
+    
+
+    # # MX(eγγ)
+    # #fits["m_epi0X_pFD"] = fit_m_epi0X(histos1D["h_m_epi0X_pFD"])
+    # #fits["m_epi0X_pCD"] = fit_m_epi0X(histos1D["h_m_epi0X_pCD"])
+
+    # Emiss
+    fits["E_miss_pFD"]  = fit_E_miss(histos1D["h_E_miss_pFD"], outFile=outFile)
+    fits["E_miss_pCD"]  = fit_E_miss(histos1D["h_E_miss_pCD"], outFile=outFile)
+
+    # ─── Extract Mean and Sigma for Later Cuts ─────────────────────
+    # for key, f in fits.items():
+    #     if f:  # make sure the fit is valid
+    #         mean  = f.GetParameter(1)
+    #         sigma = f.GetParameter(2)
+    #         results[key] = (mean, sigma)
+    #     else:
+    #         print(f"Warning: Fit for {key} failed.")
+    #         results[key] = (None, None)
+
+    # print("Exclusivity fit results:")
+    # for key, (mean, sigma) in results.items():
+    #     print(f"{key}: mean = {mean:.4f}, sigma = {sigma:.4f}")
 
     # ─── Save histograms & canvases ─────────────
 
-    for h in histos1D.values():
-        h.Write()
+    for h in histos1D.values(): 
+        if h is not None:
+            h.Write()
 
-    for h in histos2D.values():
-        h.Write()
+    for h in histos2D.values(): 
+        if h is not None:
+            h.Write()
 
     outFile.Close()
     print(f"All histograms and canvases saved to {outFilePath}")
@@ -175,5 +261,5 @@ if __name__ == "__main__":
     parser.add_argument("--output_file", type=str, help="Output ROOT file with histograms and fits")
     args = parser.parse_args()
     inputFile = args.input_file
-    outputFile = outputFile = args.output_file or "EPPI0plots.root"
+    outputFile = args.output_file or "EPPI0plots.root"
     EPPI0plots(inputFile, outputFile)

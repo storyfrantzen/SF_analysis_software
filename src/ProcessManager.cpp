@@ -384,14 +384,49 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             gen_.fill(mcParticles, j);
             
             if (gen_pid == 2212) {
-                double p_corr = rec->getP() + KC_->deltaP(rec->getP(), rec->getTheta(), det == 1);
-                double theta_corr = rec->getTheta() + KC_->deltaTheta(rec->getP(), rec->getTheta(), det == 1);
+                double p = rec->getP();
+                double theta = rec->getTheta();
+                double theta_deg = theta * 180.0/M_PI;
+                // double deltaP, deltaTheta, deltaPhi;
+
+                // if (det == 1) {
+                //     deltaP = 0.0458167986330879 + -0.027475506972075837 * log(p) + -0.004247472027676485 * theta_deg/p + 9.159753315876632e-05 * theta_deg * theta_deg/p + 0.0003153919002530214 * theta_deg/p/p;
+                //     deltaTheta = -1.0914035366386448 + 0.37858582786673695 * log(p) + 0.017365719392032568 * theta_deg + 0.20019443871143922 * theta_deg/p + -0.05215207170787847 * (theta_deg * log(theta_deg))/p + -0.0019988876109859944 * theta_deg/p/p;
+                //     deltaPhi = 1.3030561308445348 + -0.43605296354276757 * log(p) + -2.1586401881106423 / p + -0.019070655793082904 * theta_deg + 0.03997531378604315 * theta_deg/p + 0.016149245076380013 * theta_deg/p/p;
+                // }
+
+                // else if (det == 2) {
+                //     deltaP = 0.028583476785613505 + 0.0002794469014726533 * p*p*p + -0.0004565099668067588 * theta_deg + -0.01965743204591731 * p*p*log(p);
+                //     deltaTheta = 0.3624954757941615 + -0.16422288590251224 / p + -0.2027175490786133 * log(p) + -0.004125920593520138 * theta_deg + 0.0035334015325430485 *p*p*p;
+                //     deltaPhi = 0.03164089465251556 + -0.0006704458399253893 * theta_deg / p + -0.01802178351139688 * p*p*p + 0.016791693988139282 /p/p;
+                // }
+
+                // double p_corr = p + deltaP;
+                // double theta_corr = theta + deltaTheta * M_PI/180.0;
                 double phi_wrap = rec->getPhi() < 0 ? rec->getPhi() + 2*M_PI : rec->getPhi();
-                double phi_corr = phi_wrap + KC_->deltaPhi(rec->getP(), rec->getTheta(), det == 1);
+                // double phi_corr = phi_wrap + deltaPhi * M_PI/180.0;
+                // if (phi_corr > M_PI) phi_corr -= 2*M_PI;
+                // if (phi_corr < -M_PI) phi_corr += 2*M_PI;
+
+
+                // p_corr += KC_->deltaP(p_corr, theta_corr, det == 1);
+                // theta_corr += KC_->deltaTheta(p_corr, theta_corr, det == 1);
+                // phi_wrap = phi_corr < 0 ? phi_corr + 2*M_PI : phi_corr;
+                // phi_corr = phi_wrap + KC_->deltaPhi(p_corr, theta_corr, det == 1);
+
+                // if (phi_corr > M_PI) phi_corr -= 2*M_PI;
+                // if (phi_corr < -M_PI) phi_corr += 2*M_PI;
+
+                double p_corr = p + KC_->deltaP(p, theta, det == 1);
+                double theta_corr = theta + KC_->deltaTheta(p, theta, det == 1);
+                double phi_corr = phi_wrap + + KC_->deltaPhi(p, theta, det == 1);
 
                 if (phi_corr > M_PI) phi_corr -= 2*M_PI;
                 if (phi_corr < -M_PI) phi_corr += 2*M_PI;
+
+
                 rec_.fill(enabledRecBranches_, rec, p_corr, theta_corr, phi_corr);
+                // rec_.fill(enabledRecBranches_, rec);
             }
             else rec_.fill(enabledRecBranches_, rec);
             tree_->Fill();
@@ -526,12 +561,23 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
 
     // PROTON INFO:
     int detBestPro = getDetector(best_proton->par()->getStatus());
-    double p_corr = best_proton->getP() + KC_->deltaP(best_proton->getP(), best_proton->getTheta(), detBestPro == 1);
-    double theta_corr = best_proton->getTheta() + KC_->deltaTheta(best_proton->getP(), best_proton->getTheta(), detBestPro == 1);
+    // double p_corr = best_proton->getP() + KC_->deltaP(best_proton->getP(), best_proton->getTheta(), detBestPro == 1);
+    // double theta_corr = best_proton->getTheta() + KC_->deltaTheta(best_proton->getP(), best_proton->getTheta(), detBestPro == 1);
+    // double phi_wrap = best_proton->getPhi() < 0 ? best_proton->getPhi() + 2*M_PI : best_proton->getPhi();
+    // double phi_corr = phi_wrap + KC_->deltaPhi(best_proton->getP(), best_proton->getTheta(), detBestPro == 1);
+    
+    double p = best_proton->getP();
+    double theta = best_proton->getTheta();
+    double theta_deg = theta * 180.0/M_PI;
     double phi_wrap = best_proton->getPhi() < 0 ? best_proton->getPhi() + 2*M_PI : best_proton->getPhi();
-    double phi_corr = phi_wrap + KC_->deltaPhi(best_proton->getP(), best_proton->getTheta(), detBestPro == 1);
+
+    double p_corr = p + KC_->deltaP(p, theta, detBestPro == 1);
+    double theta_corr = theta + KC_->deltaTheta(p, theta, detBestPro == 1);
+    double phi_corr = phi_wrap + + KC_->deltaPhi(p, theta, detBestPro == 1);
+
     if (phi_corr > M_PI) phi_corr -= 2*M_PI;
     if (phi_corr < -M_PI) phi_corr += 2*M_PI;
+    
     p_.fill(enabledProBranches_, best_proton, p_corr, theta_corr, phi_corr);
 
     // PHOTON INFO:
