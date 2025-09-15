@@ -74,8 +74,8 @@ struct DISVars : public TObject {
 };
 struct EPPI0Vars : public TObject {
     // ALWAYS FILLED: //
-    double pi0_p, pi0_theta, pi0_phi, pi0_deltaPhi;
-    double m_gg, m2_miss, m2_epX, m2_epi0X;
+    double pi0_p, pi0_theta, pi0_phi, pi0_deltaPhi, pi0_thetaX;
+    double m_gg, m2_miss, m2_epX, m2_epi0X, m_eggX;
     double E_miss, px_miss, py_miss, pz_miss, pT_miss;
     double theta_e_g1, theta_e_g2, theta_g1_g2;
     double t, trentoPhi;

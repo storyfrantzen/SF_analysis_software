@@ -171,11 +171,13 @@ void EPPI0Vars::fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_p
     pi0_theta     = lv_pi0.Theta();
     pi0_phi       = lv_pi0.Phi();
     pi0_deltaPhi  = TVector2::Phi_mpi_pi(lv_pi0.Phi() - lv_epX.Phi());
+    pi0_thetaX    = lv_pi0.Vect().Angle(lv_epX.Vect());
 
     m_gg          = lv_pi0.M();
     m2_miss       = lv_missing.M2();
     m2_epX        = lv_epX.M2();
     m2_epi0X      = lv_epi0X.M2();
+    m_eggX         = (m2_epi0X >= 0.0) ? std::sqrt(m2_epi0X) : NAN;
     E_miss        = lv_missing.E();
     px_miss       = lv_missing.Px();
     py_miss       = lv_missing.Py();

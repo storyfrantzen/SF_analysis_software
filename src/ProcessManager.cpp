@@ -536,7 +536,7 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
                     TLorentzVector lv_candidatePi0 = lv_g1 + lv_g2;
 
                     double deltaM = std::abs(lv_candidatePi0.M() - PI0_MASS);
-                    if (deltaM > 0.05) continue;
+                    if (deltaM > 0.08) continue;
 
                     if (deltaM < leastDeltaM) {
                         detPi0         = det1; // Assign to pi0 the detector of the photon
@@ -605,11 +605,14 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
 
     eppi0_.fill(lv_ePrime, lv_pPrime, lv_g1, lv_g2, ebeam_);
 
-    // EXCLUSIVITY CUTS:
-    if (eppi0_.E_miss > 1) return;
+    // LOOSE GLOBAL EXCLUSIVITY CUTS:
+    if (eppi0_.E_miss > 1.2) return;
     if (eppi0_.pT_miss > 0.2) return;
     if (eppi0_.theta_e_g1 * 180.0/M_PI < 4 || eppi0_.theta_e_g2 * 180.0/M_PI < 4) return;
     if (eppi0_.theta_g1_g2 * 180.0/M_PI < 1) return;
+    if (eppi0_.pi0_thetaX * 180.0/M_PI < 2) return; // used in CLAS6 analysis
+    if (eppi0_.m2_epX > 0.7) return;
+    if (eppi0_.m2_epi0X > 3) return;
 
     // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region
     if (!channelCheck(dis_.Q2, dis_.W, dis_.y)) return;
