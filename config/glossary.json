@@ -17,9 +17,10 @@
         "type": "string",
         "options": {
             "genOnly": "Generated events only",
-            "inclusiveRec": "Accept all PID",
-            "genMatch": "Accept all PID which satisfy GEN<->REC matching",
-            "eppi0": "Exclusive ep->e'p'pi0"
+            "inclusiveREC": "Accept all PID",
+            "inclusiveGEMC": "Accept all PID which satisfy GEN<->REC matching",
+            "eppi0REC": "Exclusive ep->e'p'pi0",
+            "eppi0GEMC": "Exclusive ep->e'p'pi0 with GEN<->REC matching"
         }
     },
     "fiducialCuts": {

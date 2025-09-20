@@ -37,7 +37,8 @@ public:
 
     // BIGGER FUNCTIONS: //
     void processEvent(clas12::clas12reader& c12);
-    void processEPPI0(clas12::clas12reader& c12);
+    void processEPPI0REC(clas12::clas12reader& c12);
+    void processEPPI0GEMC(clas12::clas12reader& c12);
 
 private:
 
@@ -66,6 +67,7 @@ private:
     DISVars   dis_;
     DISVars   gen_dis_;
     EPPI0Vars eppi0_;
+    EPPI0Vars gen_eppi0_;
 
     std::unordered_set<std::string> enabledEvBranches_  = {};
     std::unordered_set<std::string> enabledRecBranches_ = {};

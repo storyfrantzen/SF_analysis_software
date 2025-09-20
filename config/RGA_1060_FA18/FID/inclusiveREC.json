@@ -1,0 +1,13 @@
+{
+    "ebeam": 10.60,
+    "torus": 1,
+    "channel": "inclusiveREC",
+    "branches": {
+        "rec": ["vz", "xFT", "yFT", "xDC1", "yDC1", "xDC2", "yDC2", "xDC3", "yDC3",
+                "uPCAL", "vPCAL", "wPCAL", "uECIN", "vECIN", "wECIN", "uECOUT", "vECOUT", "wECOUT",
+                "E_PCAL", "E_ECIN", "E_ECOUT"]
+    },
+    "fiducialCuts": ["DCEdges_RGA", "FT_RGA", "ECAL_RGA", "CVT_RGA"],
+    "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
+    "outPrefix": "RGA_FID"
+}

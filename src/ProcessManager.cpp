@@ -1,8 +1,8 @@
 #include "ProcessManager.h"
 
 #include "nlohmann/json.hpp"
-#include "FiducialCuts.h"       // ProcessManager has a member instance of FC during filtering
-#include "PhysicalConstants.h"  // contains useful constants
+#include "FiducialCuts.h"       
+#include "PhysicalConstants.h"  // useful constants
 #include "clas12reader.h"
 #include "TFile.h"
 #include "TTree.h"
@@ -12,17 +12,17 @@ using namespace clas12;
 
 ProcessManager::ProcessManager(const nlohmann::json& config) { 
 
-    // --- Basic Config -- 
+    // --- Basic Config -- //
     ebeam_       = config["ebeam"];
     torus_       = config["torus"];
     channel_     = config["channel"];
     outPrefix_   = config.value("outPrefix", "");
 
-    // --- Fiducial Cuts ---
+    // --- Fiducial Cuts --- //
     FC_ = std::make_unique<FiducialCuts>();
     for (const auto& cut : config.value("fiducialCuts", std::vector<std::string>{})) { FC_->addCut(cut); }
 
-    // --- Kinematic Corrections ---    
+    // --- Kinematic Corrections --- //
     if (config.contains("kinCorrections")) {
         if (config["kinCorrections"].is_string()) {
             KC_ = std::make_unique<KinematicCorrections>(config["kinCorrections"].get<std::string>());
@@ -33,7 +33,7 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
         }
     } else KC_ = std::make_unique<KinematicCorrections>(nlohmann::json{});
 
-    // --- SF Cuts ---
+    // --- SF Cuts --- //
     if (config.contains("SFCuts")) {
         if (config["SFCuts"].is_string()) {
             SF_ = std::make_unique<SFCuts>(config["SFCuts"].get<std::string>());
@@ -44,7 +44,6 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
         }
     } else SF_ = std::make_unique<SFCuts>(nlohmann::json{}); // default pass-through
     
-
     std::stringstream ss;
     ss << "output/";
     if (!outPrefix_.empty()) ss << outPrefix_ << "_";
@@ -70,17 +69,24 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
     if (channel_ == "genOnly") {
         tree_->Branch("gen_dis", "GenVars", &gen_dis_);
         tree_->Branch("gen", "GenVars", &gen_);
-    } else if (channel_ == "inclusiveRec") {
+    } else if (channel_ == "inclusiveREC") {
         tree_->Branch("rec", "RecVars", &rec_);
-    } else if (channel_ == "genMatch") {
+    } else if (channel_ == "inclusiveGEMC") {
         tree_->Branch("gen_dis",  "DISVars",     &gen_dis_);
-        tree_->Branch("gen",      "GenVars",     &gen_);
         tree_->Branch("rec",      "RecVars",     &rec_);
-    } else if (channel_ == "eppi0") {
+        tree_->Branch("gen",      "GenVars",     &gen_);
+    } else if (channel_ == "eppi0REC") {
         tree_->Branch("e",     "RecVars",     &e_);
         tree_->Branch("p",     "RecVars",     &p_);
         tree_->Branch("g",     "RecVars",     &g_);
         tree_->Branch("eppi0", "EPPI0Vars",   &eppi0_);
+    } else if (channel_ == "eppi0GEMC") {
+        tree_->Branch("gen_dis", "DISVars", &gen_dis_);
+        tree_->Branch("e",     "RecVars",     &e_);
+        tree_->Branch("p",     "RecVars",     &p_);
+        tree_->Branch("g",     "RecVars",     &g_);
+        tree_->Branch("eppi0", "EPPI0Vars", &eppi0_);
+        tree_->Branch("gen_eppi0", "EPPI0Vars", &gen_eppi0_);
     }
 
     if (config.contains("branches") && !config["branches"].is_null()) {
@@ -202,7 +208,8 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             numFills_++;
         }
 
-    } else if (channel_ == "inclusiveRec") {
+    } 
+    else if (channel_ == "inclusiveREC") {
         
         auto recParticles = c12.getDetParticles();   
         int numRec = recParticles.size();     
@@ -279,7 +286,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             numFills_++;
         }
     }
-    else if (channel_ == "genMatch") {
+    else if (channel_ == "inclusiveGEMC") {
 
         // Initialize ALL vars:
             ev_.flush();
@@ -433,10 +440,11 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             numFills_++;
         }
     }
-    else if (channel_ == "eppi0") processEPPI0(c12);
+    else if (channel_ == "eppi0REC") processEPPI0REC(c12);
+    else if (channel_ == "eppi0GEMC") processEPPI0GEMC(c12);
 }
 
-void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
+void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
     auto electrons = c12.getByID(11);   // PID 11 = electron
     auto protons   = c12.getByID(2212); // PID 2212 = proton
     auto photons   = c12.getByID(22);   // PID 22 = photon
@@ -483,6 +491,16 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
             if (!SF_->passTriangleCut(ePCAL, eECIN, ele->getP())) continue;
             if (!SF_->passSigmaCut(secEle, sf, ele->getP())) continue;
         }
+
+        // Electron 4-vector
+        TLorentzVector lv_e;
+        lv_e.SetPxPyPzE(ele->par()->getPx(), ele->par()->getPy(), ele->par()->getPz(),
+                        std::sqrt(ELECTRON_MASS * ELECTRON_MASS + ele->getP() * ele->getP()));
+
+        dis_.fill(lv_e, ebeam_);
+
+        // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region
+        if (!channelCheck(dis_.Q2, dis_.W, dis_.y)) continue;
 
         for (const auto& pro : protons) {
 
@@ -536,7 +554,7 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
                     TLorentzVector lv_candidatePi0 = lv_g1 + lv_g2;
 
                     double deltaM = std::abs(lv_candidatePi0.M() - PI0_MASS);
-                    if (deltaM > 0.08) continue;
+                    if (deltaM > 0.1) continue;
 
                     if (deltaM < leastDeltaM) {
                         detPi0         = det1; // Assign to pi0 the detector of the photon
@@ -579,6 +597,7 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
     if (phi_corr < -M_PI) phi_corr += 2*M_PI;
     
     p_.fill(enabledProBranches_, best_proton, p_corr, theta_corr, phi_corr);
+    //p_.fill(enabledProBranches_, best_proton);
 
     // PHOTON INFO:
     g_.fill(enabledPhoBranches_, best_g1);
@@ -593,11 +612,12 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
                          std::sqrt(ELECTRON_MASS * ELECTRON_MASS + best_electron->getP() * best_electron->getP()));
 
     TLorentzVector lv_pPrime;
-    lv_pPrime.SetPxPyPzE(best_proton->par()->getPx(),
-                         best_proton->par()->getPy(),
-                         best_proton->par()->getPz(),
-                         std::sqrt(PROTON_MASS * PROTON_MASS + best_proton->getP() * best_proton->getP()));
+    lv_pPrime.SetPxPyPzE(p_.p * std::sin(p_.theta) * std::cos(p_.phi),
+                         p_.p * std::sin(p_.theta) * std::sin(p_.phi),
+                         p_.p * std::cos(p_.theta),
+                         std::sqrt(PROTON_MASS * PROTON_MASS + p_.p * p_.p));
     
+    dis_.flush();
     dis_.fill(lv_ePrime, ebeam_);
 
     lv_g1.SetXYZM(best_g1->par()->getPx(), best_g1->par()->getPy(), best_g1->par()->getPz(), 0.0);
@@ -606,19 +626,219 @@ void ProcessManager::processEPPI0(clas12::clas12reader& c12) {
     eppi0_.fill(lv_ePrime, lv_pPrime, lv_g1, lv_g2, ebeam_);
 
     // LOOSE GLOBAL EXCLUSIVITY CUTS:
-    if (eppi0_.E_miss > 1.2) return;
     if (eppi0_.pT_miss > 0.2) return;
+    if (eppi0_.t > 2) return;
+    if (eppi0_.E_miss > 1.5) return;
     if (eppi0_.theta_e_g1 * 180.0/M_PI < 4 || eppi0_.theta_e_g2 * 180.0/M_PI < 4) return;
     if (eppi0_.theta_g1_g2 * 180.0/M_PI < 1) return;
-    if (eppi0_.pi0_thetaX * 180.0/M_PI < 2) return; // used in CLAS6 analysis
-    if (eppi0_.m2_epX > 0.7) return;
+    if (eppi0_.pi0_thetaX * 180.0/M_PI > 8) return; // used in CLAS6 analysis
+    if (eppi0_.m2_epX > 1) return;
     if (eppi0_.m2_epi0X > 3) return;
-
-    // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region
-    if (!channelCheck(dis_.Q2, dis_.W, dis_.y)) return;
 
     numFills_++;
 
     // FILL TREE, ONCE PER EVENT:
     tree_->Fill();
+}
+
+void ProcessManager::processEPPI0GEMC(clas12::clas12reader& c12) {
+    auto electrons = c12.getByID(11);   // PID 11 = electron
+    auto protons   = c12.getByID(2212); // PID 2212 = proton
+    auto photons   = c12.getByID(22);   // PID 22 = photon
+
+    // Reject if not EPPI0 final state, according to eventbuilder:
+    if (photons.size() < 2 || electrons.size() != 1 || protons.size() != 1) return;
+
+    TLorentzVector lv_gen_ePrime, lv_gen_pPrime, lv_gen_g1, lv_gen_g2;
+    TLorentzVector lv_ePrime, lv_pPrime, lv_g1, lv_g2;
+    std::vector<std::pair<int,int>> photonMatches;  // (gen indx, rec indx)
+
+    auto mcParticles = c12.mcparts();
+    auto recParticles = c12.getDetParticles();
+
+    int numGen = mcParticles->getRows(); 
+    int numRec = recParticles.size();
+
+    for (int j = 0; j < numGen; j++) {
+            int gen_pid = mcParticles->getPid(j);
+            TVector3 v_gen_p(mcParticles->getPx(j), mcParticles->getPy(j), mcParticles->getPz(j));
+
+            double bestDeltaTheta = 999.0;
+            int bestMatchIndex = -1;
+
+            for (int i = 0; i < numRec; i++) {
+                auto& rec = recParticles[i];
+                if (rec->par()->getPid() != gen_pid) continue;
+
+                TVector3 v_rec_p(rec->par()->getPx(), rec->par()->getPy(), rec->par()->getPz());
+                double deltaTheta = v_gen_p.Angle(v_rec_p) * 180/M_PI; 
+
+                if (deltaTheta < bestDeltaTheta) {
+                    bestDeltaTheta = deltaTheta;
+                    bestMatchIndex = i;
+                }
+            }
+
+            // Threshold for match quality:
+            if (bestMatchIndex < 0 || bestDeltaTheta > 3) {
+                if (gen_pid == 11 || gen_pid == 2212) return;
+                continue;
+            }
+
+            auto& rec  = recParticles[bestMatchIndex];
+            int det    = getDetector(rec->par()->getStatus());
+            int sec    = rec->getSector();
+            float vz   = rec->par()->getVz();      
+
+            if (gen_pid == 11) {
+                // Reject if electron has momentum less than threshold
+                if (rec->getP() < 1) return;
+
+                bool passesFC = ((det == 0 && FC_->passesFT(rec)) || 
+                                 (det == 1 && FC_->passesDC(rec, torus_) && FC_->passesECAL(rec)));
+                if (!(passesFC && passesVertexCut(vz))) return;
+
+                if (det == 1) {
+                    float ePCAL  = rec->cal(1) ? rec->cal(1)->getEnergy() : 0;
+                    float eECIN  = rec->cal(4) ? rec->cal(4)->getEnergy() : 0;
+                    float eECOUT = rec->cal(7) ? rec->cal(7)->getEnergy() : 0;
+                    float sf = (ePCAL + eECIN + eECOUT) / rec->getP();
+                    if (!SF_->passTriangleCut(ePCAL, eECIN, rec->getP())) return;
+                    if (!SF_->passSigmaCut(sec, sf, rec->getP())) return;
+                }
+
+                lv_gen_ePrime.SetPxPyPzE(v_gen_p.Px(), 
+                                         v_gen_p.Py(), 
+                                         v_gen_p.Pz(), 
+                                         std::sqrt(ELECTRON_MASS * ELECTRON_MASS + v_gen_p.Mag() * v_gen_p.Mag()));
+
+                lv_ePrime.SetPxPyPzE(rec->par()->getPx(), 
+                                     rec->par()->getPy(), 
+                                     rec->par()->getPz(), 
+                                     std::sqrt(ELECTRON_MASS * ELECTRON_MASS + rec->getP() * rec->getP()));
+
+                dis_.flush();
+                dis_.fill(lv_ePrime, ebeam_);
+                // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region
+                if (!channelCheck(dis_.Q2, dis_.W, dis_.y)) return;
+
+                gen_dis_.flush();
+                gen_dis_.fill(lv_gen_ePrime, ebeam_);
+
+                e_.flush();
+                e_.fill(enabledEleBranches_, rec);
+            }
+
+            else if (gen_pid == 2212) {
+                // Reject if proton has momentum less than threshold (Yijie + Bobby)
+                if (rec->getP() < 0.3) return;
+                bool passesFC = ((det == 1 && FC_->passesDC(rec, torus_)) || 
+                                 (det == 2 && FC_->passesCVT(rec)));
+                if (!(passesFC && passesVertexCut(vz))) return;
+
+                double p = rec->getP();
+                double theta = rec->getTheta();
+                double theta_deg = theta * 180.0/M_PI;
+                double phi_wrap = rec->getPhi() < 0 ? rec->getPhi() + 2*M_PI : rec->getPhi();
+
+                double p_corr = p + KC_->deltaP(p, theta, det == 1);
+                double theta_corr = theta + KC_->deltaTheta(p, theta, det == 1);
+                double phi_corr = phi_wrap + + KC_->deltaPhi(p, theta, det == 1);
+
+                if (phi_corr > M_PI) phi_corr -= 2*M_PI;
+                if (phi_corr < -M_PI) phi_corr += 2*M_PI;
+
+                p_.flush();
+                p_.fill(enabledProBranches_, rec, p_corr, theta_corr, phi_corr);
+
+                lv_gen_pPrime.SetPxPyPzE(v_gen_p.Px(), 
+                                         v_gen_p.Py(), 
+                                         v_gen_p.Pz(), 
+                                         std::sqrt(PROTON_MASS * PROTON_MASS + v_gen_p.Mag() * v_gen_p.Mag()));
+
+                lv_pPrime.SetPxPyPzE(p_.p * std::sin(p_.theta) * std::cos(p_.phi),
+                                     p_.p * std::sin(p_.theta) * std::sin(p_.phi),
+                                     p_.p * std::cos(p_.theta),
+                                     std::sqrt(PROTON_MASS * PROTON_MASS + p_.p * p_.p));
+            }
+
+            else if (gen_pid == 22) {
+                if (det == 2) continue;
+                if (rec->getP() < 0.4) continue;
+                if (rec->par()->getBeta() < 0.9 || rec->par()->getBeta() > 1.1) continue;
+                if (getPhotonCalE(rec) < 0.15) continue;
+                bool passesFC = (det == 0 && FC_->passesFT(rec)) || (det == 1 && FC_->passesECAL(rec));
+                if (!passesFC) continue;
+                photonMatches.emplace_back(j, bestMatchIndex); // save GEN and REC indices;
+
+                g_.flush();
+                g_.fill(enabledPhoBranches_, rec);
+            }
+    }
+
+    // now test photon pairings
+    if (photonMatches.size() < 2) return;
+    
+    bool foundPi0 = false;
+    double leastDeltaM = 1e9;
+
+    for (size_t i = 0; i < photonMatches.size(); i++) {
+        for (size_t j = i+1; j < photonMatches.size(); j++) {
+
+            auto& g1 = recParticles[photonMatches[i].second];
+            auto& g2 = recParticles[photonMatches[j].second];
+
+            int det1 = getDetector(g1->par()->getStatus());
+            int det2 = getDetector(g2->par()->getStatus());
+
+            int sec1 = g1->getSector();
+            int sec2 = g2->getSector();
+
+            // Reject if photons are not detected in same sector
+            if (sec1 != sec2) continue;
+
+            TLorentzVector lv_tmp_g1, lv_tmp_g2, lv_candidatePi0;
+            lv_tmp_g1.SetXYZM(g1->par()->getPx(), g1->par()->getPy(), g1->par()->getPz(), 0.0);
+            lv_tmp_g2.SetXYZM(g2->par()->getPx(), g2->par()->getPy(), g2->par()->getPz(), 0.0);
+            lv_candidatePi0 = lv_tmp_g1 + lv_tmp_g2;
+
+            double deltaM = std::abs(lv_candidatePi0.M() - PI0_MASS);
+            if (deltaM > 0.1) continue;
+
+            if (deltaM < leastDeltaM) {
+                foundPi0 = true;
+                leastDeltaM = deltaM;
+                int gen_g1 = photonMatches[i].first;
+                int gen_g2 = photonMatches[j].first;
+                lv_gen_g1.SetXYZM(mcParticles->getPx(gen_g1), mcParticles->getPy(gen_g1), mcParticles->getPz(gen_g1), 0);
+                lv_gen_g2.SetXYZM(mcParticles->getPx(gen_g2), mcParticles->getPy(gen_g2), mcParticles->getPz(gen_g2), 0);
+                lv_g1       = lv_tmp_g1;
+                lv_g2       = lv_tmp_g2;
+            }
+        }
+    }
+
+    if (!foundPi0) return;
+    
+    gen_eppi0_.flush();
+    eppi0_.flush();
+
+    gen_eppi0_.fill(lv_gen_ePrime, lv_gen_pPrime, lv_gen_g1, lv_gen_g2, ebeam_);
+    eppi0_.fill(lv_ePrime, lv_pPrime, lv_g1, lv_g2, ebeam_);
+
+    // LOOSE GLOBAL EXCLUSIVITY CUTS:
+    if (eppi0_.pT_miss > 0.2) return;
+    if (eppi0_.t > 2) return;
+    if (eppi0_.E_miss > 1.5) return;
+    if (eppi0_.theta_e_g1 * 180.0/M_PI < 4 || eppi0_.theta_e_g2 * 180.0/M_PI < 4) return;
+    if (eppi0_.theta_g1_g2 * 180.0/M_PI < 1) return;
+    if (eppi0_.pi0_thetaX * 180.0/M_PI > 8) return; // used in CLAS6 analysis
+    if (eppi0_.m2_epX > 1) return;
+    if (eppi0_.m2_epi0X > 3) return;
+
+    numFills_++;
+
+    // FILL TREE, ONCE PER EVENT:
+    tree_->Fill();
+
 }

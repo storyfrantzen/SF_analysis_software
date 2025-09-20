@@ -1,7 +1,7 @@
 {
-    "ebeam": 6.535,
+    "ebeam": 7.546,
     "torus": 1,
-    "channel": "eppi0",
+    "channel": "eppi0REC",
     "branches": {
         "event":    ["numElectrons", "numProtons", "numPhotons"],
         "electron": ["vz", "pz", "xFT", "yFT", "xDC1", "yDC1", "xDC2", "yDC2", "xDC3", "yDC3", "xPCAL", "yPCAL", 
@@ -15,7 +15,6 @@
     },
     "fiducialCuts": ["DCEdges_RGA", "FT_RGA", "ECAL_RGK", "ECALEdges_RGK", "CVT_RGA"],
     "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
-    "SFCuts": "/work/clas12/storyf/SF_analysis_software/config/RGK_6535_FA18/cuts_and_corrections/SF_sigma_cut_params.json",
-    "kinCorrections": "/work/clas12/storyf/SF_analysis_software/config/RGK_6535_FA18/cuts_and_corrections/protonEnergyLoss_params_standard.json",
+    "SFCuts": "/work/clas12/storyf/SF_analysis_software/config/RGK_7546_FA18/cuts_and_corrections/SF_sigma_cut_params.json",
     "outPrefix": "FID"
 }

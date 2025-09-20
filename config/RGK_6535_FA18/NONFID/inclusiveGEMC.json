@@ -1,7 +1,7 @@
 {
     "ebeam": 6.535,
     "torus": 1,
-    "channel": "genMatch",
+    "channel": "inclusiveGEMC",
     "isMC": true,
     "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
     "outPrefix": "NONFID"
