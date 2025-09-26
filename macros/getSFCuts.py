@@ -50,7 +50,7 @@ sector_arr = np.array(sector_list)
 pid_arr = np.array(pid_list)
 
 # Define momentum bins
-p_edges = np.linspace(1, 7.5, 23)
+p_edges = np.linspace(1, 9.5, 23)
 p_bin_centers = 0.5 * (p_edges[:-1] + p_edges[1:])
 
 # Prepare storage

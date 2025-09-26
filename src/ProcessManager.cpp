@@ -16,7 +16,7 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
     ebeam_       = config["ebeam"];
     torus_       = config["torus"];
     channel_     = config["channel"];
-    outPrefix_   = config.value("outPrefix", "");
+    tag_         = config.value("tag", "");
 
     // --- Fiducial Cuts --- //
     FC_ = std::make_unique<FiducialCuts>();
@@ -46,9 +46,8 @@ ProcessManager::ProcessManager(const nlohmann::json& config) {
     
     std::stringstream ss;
     ss << "output/";
-    if (!outPrefix_.empty()) ss << outPrefix_ << "_";
-    ss << currentTimestamp() << "_" << ebeam_ << "_tor" << torus_ << "_" 
-       << channel_ << ".root";
+    if (!tag_.empty()) ss << tag_ << "_";
+    ss << channel_ << "_" << ebeam_ << "_tor" << torus_ << "_" << currentTimestamp() << ".root"; 
     std::string outFileName = ss.str();
     
     outFile_ = new TFile(outFileName.c_str(), "RECREATE");
@@ -126,35 +125,60 @@ bool ProcessManager::channelCheck(float Q2, float W, float y) {
     return Q2 >= 1 && W >= 2 && y <= 0.8;
 }
 
-// Currently in use. Default is -8 <= z <= 2.
-bool ProcessManager::passesVertexCut(const float vz, const int zmin, const int zmax) { 
-    return vz >= zmin && vz <= zmax; 
+bool ProcessManager::passesVertexCut(const int pid, const float vz, const float e_vz) { 
+    if (ebeam_ > 10) {
+        if (std::abs(pid) == 2212) {
+            float diff = e_vz - vz;
+            return std::abs(diff) < 20;
+        }
+        else if (pid == 11) {
+            if (torus_ > 0) return vz >= -18 && vz <= 10;
+            else return vz >= -13 && vz <= 12;
+        }
+        else return true;
+    }
+    else return vz >= -8 && vz <= 2; 
 }
 
-void ProcessManager::finalize() {
-    if (outFile_) {
-        outFile_->cd();
-        if (tree_) {
-            auto bytesWritten = tree_->Write();
-            if (bytesWritten > 0) {
-                std::cout << "[ProcessManager] Successfully saved tree to file: "
-                          << outFile_->GetName()
-                          << " (" << bytesWritten << " bytes written)" << std::endl;
-            } else {
-                std::cerr << "[ProcessManager] Error: Failed to write tree to file: "
-                          << outFile_->GetName() << std::endl;
-            }
-            delete tree_;
-            tree_ = nullptr;
+void ProcessManager::finalize(double totalCharge) {
+    if (!outFile_) {
+        std::cerr << "[ProcessManager] finalize(): No output file open!" << std::endl;
+        return;
+    }
+
+    outFile_->cd();
+
+    // 1. Write the main event tree if it exists
+    if (tree_) {
+        auto bytesWritten = tree_->Write();
+        if (bytesWritten > 0) {
+            std::cout << "[ProcessManager] Successfully saved main tree: "
+                      << outFile_->GetName() << " (" << bytesWritten << " bytes written)" 
+                      << std::endl;
+        } else {
+            std::cerr << "[ProcessManager] Error: Failed to write main tree!" << std::endl;
         }
-        outFile_->Close();
-        delete outFile_;
-        outFile_ = nullptr;
-    } else if (tree_) {
-        // Tree exists but no outfile? Just delete tree to avoid leaks.
         delete tree_;
         tree_ = nullptr;
     }
+
+    // 2. Create a small summary tree with total charge and events processed
+    TTree summary("Summary", "Summary information");
+    summary.Branch("TotalCharge", &totalCharge, "TotalCharge/D");
+    summary.Branch("EventsProcessed", &eventsProcessed_, "EventsProcessed/I");
+    summary.Branch("Fills", &numFills_, "Fills/I");
+    summary.Fill();
+    summary.Write("", TObject::kOverwrite);
+
+    std::cout << "[ProcessManager] Summary tree written: "
+              << "TotalCharge = " << totalCharge << " nC, "
+              << "EventsProcessed = " << eventsProcessed_ << ", "
+              << "Fills = " << numFills_ << std::endl;
+
+    // 3. Close the output file
+    outFile_->Close();
+    delete outFile_;
+    outFile_ = nullptr;
 }
 
 auto getPhotonCalE = [](clas12::region_particle* g) {
@@ -215,7 +239,9 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
         int numRec = recParticles.size();     
 
         bool electronFound = false;  
-        TLorentzVector lv_ePrime; // will store the first electron’s 4-vector       
+        float e_vz = -999;
+        TLorentzVector lv_ePrime; // will store the first electron’s 4-vector      
+
 
         for (int i = 0; i < numRec; i++) {
             // Initialize ALL vars:
@@ -236,7 +262,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
                 bool passesFC = ((det == 0 && FC_->passesFT(p)) || 
                                  (det == 1 && FC_->passesDC(p, torus_) && FC_->passesECAL(p)));
-                if (!(passesFC && passesVertexCut(vz))) {
+                if (!(passesFC && passesVertexCut(pid, vz, e_vz))) {
                     if (i == 0) return;
                     else continue;
                 }
@@ -256,12 +282,13 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                                          p->par()->getPz(), 
                                          std::sqrt(ELECTRON_MASS * ELECTRON_MASS + p->getP() * p->getP()));
                     electronFound = true;
+                    e_vz = vz;
                 } 
             }
             else if (pid == 2212) {
                 bool passesFC = ((det == 1 && FC_->passesDC(p, torus_)) || 
                                  (det == 2 && FC_->passesCVT(p)));
-                if (!(passesFC && passesVertexCut(vz))) continue;
+                if (!(passesFC && passesVertexCut(pid, vz, e_vz))) continue;
             }
             else if (pid == 22) {
                 if (p->par()->getBeta() < 0.9 || p->par()->getBeta() > 1.1) continue;
@@ -299,7 +326,12 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
         auto recParticles = c12.getDetParticles();
 
         int numGen = mcParticles->getRows(); 
-        int numRec = recParticles.size();      
+        int numRec = recParticles.size();    
+
+        bool electronFound = false;  
+        float e_vz = -999;
+        TLorentzVector lv_gen_ePrime;  
+        TLorentzVector lv_ePrime; // will store the first electron’s 4-vector
 
         for (int j = 0; j < numGen; j++) {
             int gen_pid = mcParticles->getPid(j);
@@ -329,11 +361,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
             auto& rec  = recParticles[bestMatchIndex];
             int det    = getDetector(rec->par()->getStatus());
             int sec    = rec->getSector();
-            float vz   = rec->par()->getVz();
-
-            bool electronFound = false;  
-            TLorentzVector lv_gen_ePrime;  
-            TLorentzVector lv_ePrime; // will store the first electron’s 4-vector       
+            float vz   = rec->par()->getVz();       
 
             if (gen_pid == 11) {
                 // Reject if electron has momentum less than threshold
@@ -341,7 +369,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
                 bool passesFC = ((det == 0 && FC_->passesFT(rec)) || 
                                  (det == 1 && FC_->passesDC(rec, torus_) && FC_->passesECAL(rec)));
-                if (!(passesFC && passesVertexCut(vz))) continue;
+                if (!(passesFC && passesVertexCut(gen_pid, vz, e_vz))) continue;
 
                 if (det == 1) {
                     float ePCAL  = rec->cal(1) ? rec->cal(1)->getEnergy() : 0;
@@ -363,6 +391,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                                          rec->par()->getPz(), 
                                          std::sqrt(ELECTRON_MASS * ELECTRON_MASS + rec->getP() * rec->getP()));
                     electronFound = true;
+                    e_vz = vz;
                 } 
             } 
 
@@ -372,7 +401,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
                 bool passesFC = ((det == 1 && FC_->passesDC(rec, torus_)) || 
                                  (det == 2 && FC_->passesCVT(rec)));
-                if (!(passesFC && passesVertexCut(vz))) return;
+                if (!(passesFC && passesVertexCut(gen_pid, vz, e_vz))) return;
             }
 
             else if (gen_pid == 22) {
@@ -474,8 +503,10 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
         // Reject if electron has momentum less than threshold
         if (ele->getP() < 1) continue;
 
+        float e_vz = -999;
+
         // Reject if electron vertex isn't in target fiducial volume
-        if (!passesVertexCut(ele->par()->getVz())) continue;
+        if (!passesVertexCut(ele->par()->getPid(), ele->par()->getVz(), e_vz)) continue;
 
         int detEle = getDetector(ele->par()->getStatus());
         int secEle = ele->getSector();
@@ -498,6 +529,7 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
                         std::sqrt(ELECTRON_MASS * ELECTRON_MASS + ele->getP() * ele->getP()));
 
         dis_.fill(lv_e, ebeam_);
+        e_vz = ele->par()->getVz();
 
         // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region
         if (!channelCheck(dis_.Q2, dis_.W, dis_.y)) continue;
@@ -508,7 +540,7 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
             if (pro->getP() < 0.3) continue;
 
             // Reject if proton vertex isn't in target fiducial volume
-            if (!passesVertexCut(pro->par()->getVz())) continue;
+            if (!passesVertexCut(pro->par()->getPid(), pro->par()->getVz(), e_vz)) continue;
 
             int detPro = getDetector(pro->par()->getStatus());
             // Reject if proton fails fiducial cuts (ONLY if cuts are listed!)
@@ -659,6 +691,8 @@ void ProcessManager::processEPPI0GEMC(clas12::clas12reader& c12) {
     int numGen = mcParticles->getRows(); 
     int numRec = recParticles.size();
 
+    float e_vz = -999;
+
     for (int j = 0; j < numGen; j++) {
             int gen_pid = mcParticles->getPid(j);
             TVector3 v_gen_p(mcParticles->getPx(j), mcParticles->getPy(j), mcParticles->getPz(j));
@@ -696,7 +730,7 @@ void ProcessManager::processEPPI0GEMC(clas12::clas12reader& c12) {
 
                 bool passesFC = ((det == 0 && FC_->passesFT(rec)) || 
                                  (det == 1 && FC_->passesDC(rec, torus_) && FC_->passesECAL(rec)));
-                if (!(passesFC && passesVertexCut(vz))) return;
+                if (!(passesFC && passesVertexCut(gen_pid, vz, e_vz))) return;
 
                 if (det == 1) {
                     float ePCAL  = rec->cal(1) ? rec->cal(1)->getEnergy() : 0;
@@ -727,6 +761,7 @@ void ProcessManager::processEPPI0GEMC(clas12::clas12reader& c12) {
 
                 e_.flush();
                 e_.fill(enabledEleBranches_, rec);
+                e_vz = vz;
             }
 
             else if (gen_pid == 2212) {
@@ -734,7 +769,7 @@ void ProcessManager::processEPPI0GEMC(clas12::clas12reader& c12) {
                 if (rec->getP() < 0.3) return;
                 bool passesFC = ((det == 1 && FC_->passesDC(rec, torus_)) || 
                                  (det == 2 && FC_->passesCVT(rec)));
-                if (!(passesFC && passesVertexCut(vz))) return;
+                if (!(passesFC && passesVertexCut(gen_pid, vz, e_vz))) return;
 
                 double p = rec->getP();
                 double theta = rec->getTheta();

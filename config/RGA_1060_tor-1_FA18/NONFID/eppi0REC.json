@@ -1,6 +1,6 @@
 {
-    "ebeam": 6.535,
-    "torus": 1,
+    "ebeam": 10.604,
+    "torus": -1,
     "channel": "eppi0REC",
     "branches": {
         "event":    ["numElectrons", "numProtons", "numPhotons"],
@@ -14,5 +14,5 @@
                      "E_PCAL", "E_ECIN", "E_ECOUT"]
     },
     "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
-    "tag": "RGK_NONFID"
+    "tag": "RGA_NONFID"
 }

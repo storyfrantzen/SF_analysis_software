@@ -30,10 +30,10 @@ public:
     std::string currentTimestamp() const; 
     static int getDetector(int status);
     bool channelCheck(float Q2, float W, float y);
-    bool passesVertexCut(const float vz, const int zmin=-8, const int zmax=2);
+    bool passesVertexCut(const int pid, const float vz, const float e_vz);
 
-    // saves ROOT tree to output file: 
-    void finalize();
+    // saves ROOT tree to output file and creates summary tree which stores Events tree and Summary tree: 
+    void finalize(double totalCharge);
 
     // BIGGER FUNCTIONS: //
     void processEvent(clas12::clas12reader& c12);
@@ -48,7 +48,7 @@ private:
     double ebeam_;
     std::string channel_;
     int torus_;
-    std::string outPrefix_;
+    std::string tag_;
     bool requireTopology_ = false;
 
     std::unique_ptr<FiducialCuts> FC_;

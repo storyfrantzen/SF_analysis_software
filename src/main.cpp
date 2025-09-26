@@ -141,10 +141,9 @@ int main(int argc, char** argv) {
         if (PM.eventsProcessed() % 100000 == 0) std::cout << PM.eventsProcessed() << " events have been processed. \n";
     }
 
-    PM.finalize();
-
-    std::cout << "Processing complete. " << PM.eventsProcessed() << " events were processed, and " <<
-                    PM.numFills() << " tree fills were made." << std::endl;
+    double totalCharge = chain.TotalBeamCharge();
+    PM.finalize(totalCharge);
+    
     auto finish = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = finish - start;
     std::cout << "Elapsed time: " << elapsed.count() << " s" << std::endl;

@@ -8,5 +8,5 @@
                 "E_PCAL", "E_ECIN", "E_ECOUT"]
     },
     "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
-    "outPrefix": "NONFID"
+    "tag": "RGK_NONFID"
 }

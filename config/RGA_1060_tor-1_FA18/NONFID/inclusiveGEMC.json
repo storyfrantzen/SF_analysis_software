@@ -1,8 +1,8 @@
 {
-    "ebeam": 6.535,
-    "torus": 1,
+    "ebeam": 10.604,
+    "torus": -1,
     "channel": "inclusiveGEMC",
     "isMC": true,
     "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
-    "tag": "RGK_NONFID"
+    "tag": "RGA_NONFID"
 }

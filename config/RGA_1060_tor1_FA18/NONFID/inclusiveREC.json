@@ -1,5 +1,5 @@
 {
-    "ebeam": 10.60,
+    "ebeam": 10.604,
     "torus": 1,
     "channel": "inclusiveREC",
     "branches": {
@@ -7,7 +7,6 @@
                 "uPCAL", "vPCAL", "wPCAL", "uECIN", "vECIN", "wECIN", "uECOUT", "vECOUT", "wECOUT",
                 "E_PCAL", "E_ECIN", "E_ECOUT"]
     },
-    "fiducialCuts": ["DCEdges_RGA", "FT_RGA", "ECAL_RGA", "CVT_RGA"],
     "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
-    "outPrefix": "RGA_FID"
+    "tag": "RGA_NONFID"
 }

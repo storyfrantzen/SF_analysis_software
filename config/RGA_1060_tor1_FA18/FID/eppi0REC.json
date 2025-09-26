@@ -1,5 +1,5 @@
 {
-    "ebeam": 6.535,
+    "ebeam": 10.604,
     "torus": 1,
     "channel": "eppi0REC",
     "branches": {
@@ -13,6 +13,9 @@
                      "uPCAL", "vPCAL", "wPCAL", "uECIN", "vECIN" ,"wECIN", "uECOUT", "vECOUT", "wECOUT",
                      "E_PCAL", "E_ECIN", "E_ECOUT"]
     },
+    "fiducialCuts": ["DCEdges_RGA", "FT_RGA", "ECAL_RGA", "CVT_RGA"],
     "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
-    "tag": "RGK_NONFID"
+    "SFCuts": "/work/clas12/storyf/SF_analysis_software/config/RGA_1060_tor1_FA18/cuts_and_corrections/SF_sigma_cut_params.json",
+    "kinCorrections": "/work/clas12/storyf/SF_analysis_software/config/RGA_1060_tor1_FA18/cuts_and_corrections/protonEnergyLoss_params_standard.json",
+    "tag": "RGA_FID"
 }

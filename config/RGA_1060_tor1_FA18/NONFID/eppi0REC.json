@@ -1,5 +1,5 @@
 {
-    "ebeam": 10.60,
+    "ebeam": 10.604,
     "torus": 1,
     "channel": "eppi0REC",
     "branches": {
@@ -14,5 +14,5 @@
                      "E_PCAL", "E_ECIN", "E_ECOUT"]
     },
     "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
-    "outPrefix": "RGA_NONFID"
+    "tag": "RGA_NONFID"
 }

@@ -1,7 +1,0 @@
-{
-    "ebeam": 10.60,
-    "torus": 1,
-    "channel": "inclusiveGEMC",
-    "isMC": true,
-    "fiducialCuts": ["DCEdges_RGA", "FT_RGA", "ECAL_RGA", "CVT_RGA"]
-}

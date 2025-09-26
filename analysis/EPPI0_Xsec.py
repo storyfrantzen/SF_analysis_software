@@ -2,8 +2,13 @@
 import argparse
 import ROOT
 import numpy as np
+import math
 
 ROOT.gSystem.Load("/work/clas12/storyf/SF_analysis_software/build/install/lib/libBranchVarsDict.so")
+
+ALPHA_EM = 1/137.035999084
+PROTON_MASS = 0.9382720813  # proton mass [GeV]
+PI = math.pi
 
 # Physics-motivated fit windows
 DEFAULT_FITS = {
@@ -222,12 +227,43 @@ def save_acceptance_maps(acceptance, Q2_edges, Xb_edges, t_edges, phi_edges, fil
                 h_acc.Write()
     out_file.Close()
 
+def epsilon(Q2, y, E):
+    numerator = 1 - y - Q2/(4*E**2)
+    denom = 1 - y + y**2/2 + Q2/(4*E**2)
+    if denom <= 0:
+        return 0.0
+    return numerator / denom
+
+def get_y(Q2, xb, E):
+    return Q2 / (2.0 * PROTON_MASS * xb * E)
+
+def gamma_flux(Q2, xb, E):
+    if Q2 <= 0 or xb <= 0:
+        return 0.0
+
+    # compute epsilon
+    y = get_y(xb, Q2, E)
+    eps = epsilon(y, Q2, E)
+    # protect against eps >= 1 (would blow up 1/(1-eps))
+    if eps >= 0.999999:
+        return 0.0
+    
+    flux = ALPHA_EM / (8.0 * PI) * Q2 / (PROTON_MASS * E)**2 * (1 - xb) / xb / xb / xb * 1 / (1 - eps)
+
+    # safety: require flux finite and non-negative
+    if not np.isfinite(flux) or flux <= 0:
+        return 0.0
+    return flux
+
+
 ### ----------------- ARGS ----------------- ###
 parser = argparse.ArgumentParser(description="Compute XSection from input ROOT file.")
 parser.add_argument("input_file", type=str)
+parser.add_argument("E", type=float, help="Beam energy")
 parser.add_argument("--gemc", type=str, help="Optional GEMC file for acceptance corrections")
 parser.add_argument("-a","--adaptive", action="store_true")
 parser.add_argument("-c6", "--clas6", action="store_true")
+parser.add_argument("-c12", "--clas12", action="store_true")
 parser.add_argument("-m", "--manual", action="store_true")
 parser.add_argument("-p", "--plot", action="store_true", help="Plot histogram slices")
 parser.add_argument("-v", "--verbose", action="store_true", help="Verbose, diagnostics for all kinematic bins.")
@@ -238,16 +274,16 @@ f = ROOT.TFile(args.input_file, "READ")
 tree = f.Get("Events")
 df = ROOT.RDataFrame(tree)
 
-cols_needed = ["dis.Q2","dis.Xb","eppi0.t","eppi0.trentoPhi","p.det",
+cols_needed = ["dis.Q2","dis.Xb", "dis.y", "eppi0.t","eppi0.trentoPhi","p.det",
                "eppi0.pi0_thetaX","eppi0.m2_epX","eppi0.m_eggX","eppi0.E_miss","eppi0.m_gg"]
 
 df_numpy = df.AsNumpy(columns=cols_needed)
 for k in cols_needed: df_numpy[k] = coerce_scalar_column(df_numpy[k])
 
 if args.adaptive:
-    Q2_edges = get_adaptive_edges(tree, "dis.Q2", 7, 1.0, 6.5)
-    Xb_edges = get_adaptive_edges(tree, "dis.Xb", 7, 0.1, 0.7)
-    t_edges  = get_adaptive_edges(tree, "eppi0.t", 8, 0.0, 2.0)
+    Q2_edges = get_adaptive_edges(tree, "dis.Q2", 6, 1.0, 6.5)
+    Xb_edges = get_adaptive_edges(tree, "dis.Xb", 6, 0.1, 0.7)
+    t_edges  = get_adaptive_edges(tree, "eppi0.t", 6, 0.0, 2.0)
     print(f"Adaptive binning yielded {len(Q2_edges)} Q2 bins, {len(Xb_edges)} Xb bins, {len(t_edges)} t bins.")
     phi_edges = np.linspace(0, 360, 21)
 elif args.clas6:
@@ -255,13 +291,19 @@ elif args.clas6:
     Xb_edges = np.array([0.1,0.15,0.2,0.25,0.3,0.38,0.48,0.58])
     t_edges  = np.array([0.09,0.15,0.2,0.3,0.4,0.6,1.0,1.5,2.0])
     phi_edges = np.linspace(0, 360, 21)
+elif args.clas12:
+    Q2_edges = np.array([1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4, 4.6, 5.5, 7.0, 10.5]) # guessed final three edges from figures
+    Xb_edges = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.38, 0.48, 0.58, 0.9])
+    t_edges  = np.array([0.09, 0.15, 0.2, 0.3, 0.4, 0.6, 1.0, 1.5, 2.0])
+    phi_edges = np.linspace(0, 360, 11)
 elif args.manual:
-    Q2_edges = np.array([1.0, 1.5, 2, 2.5, 3, 3.5, 4, 4.6])
-    Xb_edges = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+    Q2_edges = np.array([1.0, 1.5, 2, 2.5, 3, 3.5, 4, 6.5])
+    #Q2_edges = np.array([1.0, 7.5])
+    Xb_edges = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
     t_edges  = np.array([0.0, 2.0])
-    phi_edges = np.linspace(0, 360, 21)
+    phi_edges = np.linspace(0, 360, 11)
 else:
-    raise RuntimeError("Must specify --adaptive or --clas6")
+    raise RuntimeError("Must specify binning scheme, e.g., --adaptive or --clas6 or --manual")
 
 iQ2   = get_bin_indices(df_numpy["dis.Q2"], Q2_edges)
 iXb   = get_bin_indices(df_numpy["dis.Xb"], Xb_edges)
@@ -346,8 +388,8 @@ surviving_indices = np.flatnonzero(surv_mask_all)
 print(f"Total surviving events: {len(surviving_indices)}")
 print(f"Sum after 3σ cuts + sideband subtraction: {hist4D.sum():.3f}")
 
-### ----------------- Fill 1D ROOT histograms ----------------- ###
-out_file = ROOT.TFile("exclusive_summary.root", "RECREATE")
+### ----------------- Fill survival ROOT histograms ----------------- ###
+out_file = ROOT.TFile("exclusive_survival_summary.root", "RECREATE")
 hist_dict = {}
 nbins_default = 100
 
@@ -359,6 +401,15 @@ for var in ex_vars:
     for v in vals: h.Fill(float(v))
     h.Write()
     hist_dict[var] = h
+
+h_Q2_Xb = ROOT.TH2D(
+    "h_Q2_Xb", "Q^{2} vs x_{B} Coverage; x_{B}; Q^{2} [GeV^{2}]; Events",
+    len(Xb_edges)-1, Xb_edges, len(Q2_edges)-1, Q2_edges
+)
+
+for q2, xb in zip(df_numpy["dis.Q2"][surviving_indices], df_numpy["dis.Xb"][surviving_indices]):
+    h_Q2_Xb.Fill(xb, q2)
+h_Q2_Xb.Write()
 
 out_file.Close()
 print("Saved exclusive histograms to exclusive_summary.root")
@@ -380,8 +431,19 @@ else:
 ### ----------------- Project 4D histogram to phi ----------------- ###
 out_file = ROOT.TFile("phi_xsec.root", "RECREATE")
 
+Ebeam = args.E
+
 for q2 in range(bins_map[0]):
+    Q2_center = 0.5 * (Q2_edges[q2] + Q2_edges[q2+1])
     for xb in range(bins_map[1]):
+        Xb_center = 0.5 * (Xb_edges[xb] + Xb_edges[xb+1])
+
+        # compute the flux for this (Q2, xb) bin
+        gamma = gamma_flux(Q2_center, Xb_center, Ebeam)
+        if gamma <= 0:
+            print("uh oh")
+            continue  # skip unphysical bins
+
         for t in range(bins_map[2]):
             phi_yields = yield4D[q2, xb, t, :]
             if np.sum(phi_yields) == 0:
@@ -391,7 +453,11 @@ for q2 in range(bins_map[0]):
             phi_centers = 0.5 * (phi_edges[:-1] + phi_edges[1:])
             phi_widths  = 0.5 * (phi_edges[1:] - phi_edges[:-1])
             errors = np.sqrt(phi_yields)  # Poisson errors on counts
-            values = phi_yields  # already normalized by bin volume if desired
+
+            # divide by flux
+            sigma_red = phi_yields / gamma
+            sigma_red_err = errors / gamma
+            print(f"Bin Q2={q2}, Xb={xb}, t={t}: sigma_red sum={np.sum(sigma_red)}")
 
             n_points = len(phi_centers)
             gr_name = f"gr_phi_q{q2}_xb{xb}_t{t}"
@@ -399,16 +465,18 @@ for q2 in range(bins_map[0]):
                         f"Xb={Xb_edges[xb]:.2f}-{Xb_edges[xb+1]:.2f}, "
                         f"-t={t_edges[t]:.2f}-{t_edges[t+1]:.2f}; "
                         f"#phi [deg]; "
-                        "#pi^{0} Yield [arb.]")
-            gr = ROOT.TGraphErrors(n_points, 
-                                   phi_centers.astype(np.float64), 
-                                   values.astype(np.float64),
-                                   phi_widths.astype(np.float64),  # optional x errors
-                                   errors.astype(np.float64))
+                        "#pi^{0} Reduced Cross Section [arb.]")
+            gr = ROOT.TGraphErrors(
+                n_points,
+                phi_centers.astype(np.float64),
+                sigma_red.astype(np.float64),
+                phi_widths.astype(np.float64),
+                sigma_red_err.astype(np.float64)
+            )
             gr.SetName(gr_name)
             gr.SetTitle(gr_title)
-            gr.Draw("AP")  # A=axis, P=points with error bars
-            gr.GetXaxis().SetRangeUser(0, 360)  # manually set x-axis limits
+            gr.Draw("AP")
+            gr.GetXaxis().SetRangeUser(0, 360)
             gr.Write()
 
 out_file.Close()
