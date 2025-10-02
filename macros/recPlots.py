@@ -32,7 +32,7 @@ def drawElectronPlots(df, branchPrefix, leaf_list, hist_name=None):
     e_hists = {}
 
     # Always-make histograms
-    e_hists["e_p"] = df.Histo1D(("e_p", "Electron Momentum; p_{e}; Counts", 300, 0, 6.5), p_var)
+    e_hists["e_p"] = df.Histo1D(("e_p", "Electron Momentum; p_{e}; Counts", 300, 0, 9.5), p_var)
     e_hists["e_beta"] = df.Histo1D(("e_beta", "Electron Beta; beta_{e}; Counts", 100, 0, 2), beta_var)
     e_hists["e_theta"] = df.Histo1D(("e_theta", "Electron Theta; #theta_{e} [deg]; Counts", 120, 0, 120), theta_var)
     e_hists["e_phi"] = df.Histo1D(("e_phi", "Electron Phi; #phi_{e} [deg]; Counts", 360, 0, 360), phi_var)
@@ -59,11 +59,14 @@ def drawElectronPlots(df, branchPrefix, leaf_list, hist_name=None):
         E_ECIN_var = f"{branchPrefix}.E_ECIN"
         E_ECOUT_var = f"{branchPrefix}.E_ECOUT"
         df = df.Define("SF", f"({E_PCAL_var} + {E_ECIN_var} + {E_ECOUT_var}) / {p_var}")
+        df = df.Define("E_ECAL", f"({E_ECIN_var} + {E_ECOUT_var})")
         e_hists["e_E_PCAL"] = df.Histo1D(("e_E_PCAL", "Electron E_{PCAL}; E_{PCAL} [GeV]; Counts", 10, 0, 2), E_PCAL_var)
         e_hists["e_E_ECIN"] = df.Histo1D(("e_E_ECIN", "Electron E_{ECIN}; E_{ECIN} [GeV]; Counts", 10, 0, 1), E_ECIN_var)
         e_hists["e_E_ECOUT"] = df.Histo1D(("e_E_ECOUT", "Electron E_{ECOUT}; E_{ECOUT} [GeV]; Counts", 10, 0, 1), E_ECOUT_var)
         e_hists["e_SF_vs_p"] = df.Histo2D(("e_SF_vs_p", "Electron Sampling Fraction vs p; p [GeV]; E_{tot} / p", 
-                                   75, 0, 7, 75, 0, .4), p_var, "SF")
+                                   75, 0, 9.5, 75, 0, .4), p_var, "SF")
+        e_hists["e_E_ECAL_vs_E_PCAL"] = df.Histo2D(("e_E_ECAL_vs_E_PCAL", "Electron E_{ECAL} vs E_{PCAL}; E_{PCAL} [GeV]; E_{ECAL} [GeV]",
+                                    75, 0, 0.5, 75, 0, 0.5), E_PCAL_var, "E_ECAL") 
 
     if hist_name:
         return {hist_name: e_hists[hist_name]} if hist_name in e_hists else {}

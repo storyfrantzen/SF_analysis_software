@@ -24,18 +24,17 @@ SFCuts::SFCuts(const json& j) {
         return;
     }
 
+    // sector-specific coeffs
     for (int sec = 1; sec <= 6; ++sec) {
         std::string key = "sector_" + std::to_string(sec);
         if (!j.contains(key)) continue;
 
         SectorCoeffs sc;
-        sc.mu_coeffs = j[key]["mu_coeffs"].get<std::vector<double>>();
+        sc.mu_coeffs    = j[key]["mu_coeffs"].get<std::vector<double>>();
         sc.sigma_coeffs = j[key]["sigma_coeffs"].get<std::vector<double>>();
-        coeffsMap[sec] = sc;
+        coeffsMap[sec]  = sc;
     }
-
-    if (coeffsMap.empty()) enabled_ = false;
-    else enabled_ = true;
+    enabled_ = !coeffsMap.empty();
 }
 
 // --- Evaluate polynomial ---

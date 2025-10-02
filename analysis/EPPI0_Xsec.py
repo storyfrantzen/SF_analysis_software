@@ -3,21 +3,27 @@ import argparse
 import ROOT
 import numpy as np
 import math
+from scipy.optimize import curve_fit
 
 ROOT.gSystem.Load("/work/clas12/storyf/SF_analysis_software/build/install/lib/libBranchVarsDict.so")
 
+# constants:
+ELECTRON_CHARGE = 1.602e-19 # Coulombs
+TARGET_LENGTH = 5.00 # cm
+RHO_LH2 = 0.07 # g / cm3
+N_A = 6.02214e23
 ALPHA_EM = 1/137.035999084
 PROTON_MASS = 0.9382720813  # proton mass [GeV]
 PI = math.pi
 
-# Physics-motivated fit windows
+# physics-motivated fit windows:
 DEFAULT_FITS = {
-    "mgg":    {"fit_func": "gaus(0)+pol1(3)", "range": (0.098, 0.17), "p0": None},      # pi0
-    "m2_epX": {"fit_func": "gaus(0)+pol1(3)", "range": (-0.2, 0.2),   "p0": None},      # missing mass^2 epX
-    "m2_epi0X": {"fit_func": "gaus(0)+pol1(3)", "range": (0.5, 1.5),  "p0": None},      # missing mass^2 epi0X
-    "m_eggX": {"fit_func": "gaus(0)+pol1(3)", "range": (0.8, 1.1),    "p0": None},      # missing mass eggX
-    "E_miss": {"fit_func": "gaus(0)+pol1(3)", "range": (-0.2, 0.4),   "p0": None},      # missing energy
-    "pi0_thetaX": {"fit_func": "crystalball(0)", "range": (0, 0.12), "p0": None}        # pi0 thetaX
+    "m_gg":       {"fit_func": "gaus(0)+pol1(3)",  "range": (0.098, 0.17), "p0": None},      # pi0
+    "m2_epX":     {"fit_func": "gaus(0)+pol1(3)",  "range": (-0.2, 0.2),   "p0": None},      # missing mass^2 epX
+    "m2_epi0X":   {"fit_func": "gaus(0)+pol1(3)",  "range": (0.5, 1.5),    "p0": None},      # missing mass^2 epi0X
+    "m_eggX":     {"fit_func": "gaus(0)+pol1(3)",  "range": (0.7, 1.4),    "p0": None},      # missing mass eggX
+    "E_miss":     {"fit_func": "gaus(0)+pol1(3)",  "range": (-0.2, 0.4),   "p0": None},      # missing energy
+    "pi0_thetaX": {"fit_func": "crystalball(0)",   "range": (0, 0.12),     "p0": None}       # pi0 thetaX
 }
 
 ### ----------------- Helper Functions ----------------- ###
@@ -37,7 +43,7 @@ def coerce_scalar_column(arr):
             except: out.append(np.nan)
     return np.array(out, dtype=float)
 
-def get_adaptive_edges(tree, varname, n_bins, min_val, max_val, fine_bins=500):
+def get_adaptive_edges(tree, varname, n_bins, min_val, max_val, fine_bins=1000):
     hist_name = f"h_{varname}"
     hist = ROOT.TH1D(hist_name, hist_name, fine_bins, min_val, max_val)
     tree.Draw(f"{varname} >> {hist_name}", "", "goff")
@@ -255,6 +261,9 @@ def gamma_flux(Q2, xb, E):
         return 0.0
     return flux
 
+def luminosity(q_beam, l_target=TARGET_LENGTH, rho_target=RHO_LH2):
+    # returns luminosity in inverse femtobarns, provided input beam charge in C
+    return N_A * l_target * rho_target * q_beam / ELECTRON_CHARGE * 1e-39  # fb^-1
 
 ### ----------------- ARGS ----------------- ###
 parser = argparse.ArgumentParser(description="Compute XSection from input ROOT file.")
@@ -265,25 +274,27 @@ parser.add_argument("-a","--adaptive", action="store_true")
 parser.add_argument("-c6", "--clas6", action="store_true")
 parser.add_argument("-c12", "--clas12", action="store_true")
 parser.add_argument("-m", "--manual", action="store_true")
-parser.add_argument("-p", "--plot", action="store_true", help="Plot histogram slices")
+parser.add_argument("--global_cuts", action="store_true", help="Derive exclusivity cuts globally instead of bin-by-bin")
 parser.add_argument("-v", "--verbose", action="store_true", help="Verbose, diagnostics for all kinematic bins.")
 args = parser.parse_args()
 
-### ----------------- Main Workflow ----------------- ###
+### --------------- Read eppi0REC ROOT file --------------- ###
 f = ROOT.TFile(args.input_file, "READ")
-tree = f.Get("Events")
-df = ROOT.RDataFrame(tree)
+summary_tree = f.Get("Summary")
+summary_tree.GetEntry(0)
+events_tree = f.Get("Events")
+df = ROOT.RDataFrame(events_tree)
+cols = ["dis.Q2","dis.Xb","eppi0.t","eppi0.trentoPhi","p.det","eppi0.pi0_thetaX","eppi0.m2_epX","eppi0.m_eggX","eppi0.E_miss","eppi0.m_gg"]
+df_numpy = df.AsNumpy(columns=cols)
+for k in cols: df_numpy[k] = coerce_scalar_column(df_numpy[k])
+ex_vars = ["m2_epX", "m_eggX", "E_miss", "pi0_thetaX", "m_gg"]
+exclusive_vars = ["m2_epX", "m_eggX", "E_miss", "pi0_thetaX"] # not including m_gg
 
-cols_needed = ["dis.Q2","dis.Xb", "dis.y", "eppi0.t","eppi0.trentoPhi","p.det",
-               "eppi0.pi0_thetaX","eppi0.m2_epX","eppi0.m_eggX","eppi0.E_miss","eppi0.m_gg"]
-
-df_numpy = df.AsNumpy(columns=cols_needed)
-for k in cols_needed: df_numpy[k] = coerce_scalar_column(df_numpy[k])
-
+### --------------- Initialize binning scheme --------------- ###
 if args.adaptive:
-    Q2_edges = get_adaptive_edges(tree, "dis.Q2", 6, 1.0, 6.5)
-    Xb_edges = get_adaptive_edges(tree, "dis.Xb", 6, 0.1, 0.7)
-    t_edges  = get_adaptive_edges(tree, "eppi0.t", 6, 0.0, 2.0)
+    Q2_edges = get_adaptive_edges(events_tree, "dis.Q2", 6, 1.0, 6.5)
+    Xb_edges = get_adaptive_edges(events_tree, "dis.Xb", 6, 0.1, 0.7)
+    t_edges  = get_adaptive_edges(events_tree, "eppi0.t", 6, 0.0, 2.0)
     print(f"Adaptive binning yielded {len(Q2_edges)} Q2 bins, {len(Xb_edges)} Xb bins, {len(t_edges)} t bins.")
     phi_edges = np.linspace(0, 360, 21)
 elif args.clas6:
@@ -309,28 +320,75 @@ iQ2   = get_bin_indices(df_numpy["dis.Q2"], Q2_edges)
 iXb   = get_bin_indices(df_numpy["dis.Xb"], Xb_edges)
 it    = get_bin_indices(df_numpy["eppi0.t"], t_edges)
 iphi  = get_bin_indices((df_numpy["eppi0.trentoPhi"] + 2*np.pi) % (2*np.pi) * 180.0/np.pi, phi_edges)
-
-in_range = (iQ2>=0) & (iXb>=0) & (it>=0) & (iphi>=0)
-n_events = np.sum(in_range)
-print(f"Total events in kinematic range: {n_events}")
-
 pIdx  = np.where(np.isclose(df_numpy["p.det"], 1.0), 0, 1).astype(int)
 
+in_range = (iQ2>=0) & (iXb>=0) & (it>=0) & (iphi>=0)
+print(f"Total events in kinematic range: {np.sum(in_range)}")
+
 bins_map = (len(Q2_edges)-1, len(Xb_edges)-1, len(t_edges)-1, len(phi_edges)-1, 2)
-ex_vars = ["m2_epX", "m_eggX", "E_miss", "pi0_thetaX", "m_gg"]
 
-### ----------- Fill 4D ROOT histograms and obtain yield ----------- ###
-
+### ------ Sideband subtraction parameters:
 n_sigma_signal = 3
 n_sigma_sb_min = 3
 n_sigma_sb_max = 5
 
-hist4D = np.zeros(bins_map[:4], dtype=float)
-yield4D = np.zeros(bins_map[:4], dtype=float)
-exclusive_vars = ["m2_epX", "m_eggX", "E_miss", "pi0_thetaX"]
+### -------- Global ex. cuts (per proton topology) --------- ###
+global_cuts = {}
+if args.global_cuts:
+    print(">>> Deriving global exclusivity cuts (for separate proton topologies)...")
+    for p in range(2):  # pIdx = 0 (FD), 1 (CD)
+        surv_mask = (in_range) & (pIdx == p)
+        for var in exclusive_vars:
+            vals = df_numpy[f"eppi0.{var}"][surv_mask]
+            if len(vals) == 0:
+                continue
+            mu, sigma = fit_exclusive(vals, name=var)
+            global_cuts[(var, p)] = (mu, sigma)
+            if args.verbose:
+                print(f"Global {var}, pIdx={p}: mu={mu:.5f}, sigma={sigma:.5f}")
 
+             # apply cut immediately so next var sees reduced distribution
+            surv_mask[surv_mask] &= np.abs(vals - mu) <= n_sigma_signal*sigma
+            if args.verbose:
+                print(f"Var={var}, pIdx={p}: mu={mu:.5f}, sigma={sigma:.5f}, survived {np.sum(surv_mask)}")
+
+### ------ create 4D arrays + boolean mask for final survivors:
+side_sub_yield4D = np.zeros(bins_map[:4], dtype=float) 
+errs4D = np.zeros(bins_map[:4], dtype=float)
+xsec4D = np.zeros(bins_map[:4], dtype=float) 
 surv_mask_all = np.zeros(len(df_numpy["dis.Q2"]), dtype=bool)
 
+BEAM_Q = summary_tree.TotalCharge * 1e-9 # Coulombs
+LUM_INT = luminosity(BEAM_Q) # fb^-1
+BR = 0.988
+
+### ----------------- Acceptance from GEMC: ----------------- ###
+acceptance = None
+if args.gemc:
+    cols_gemc = ["gen_dis.Q2","gen_dis.Xb","gen_eppi0.t","gen_eppi0.trentoPhi", "dis.Q2","dis.Xb","eppi0.t","eppi0.trentoPhi"]
+    df_numpy_gemc = load_gemc(args.gemc, cols_gemc)
+    acceptance = compute_acceptance(df_numpy_gemc, Q2_edges, Xb_edges, t_edges, phi_edges, xsec4D.shape)
+    save_acceptance_maps(acceptance, Q2_edges, Xb_edges, t_edges, phi_edges)
+
+### ----------- Create tree to track raw counts ----------- ###
+out_file = ROOT.TFile("survival_summary.root", "RECREATE")
+tree_raw = ROOT.TTree("raw_counts", "Raw event counts per bin")
+tree_raw.SetAutoFlush(10000)  # flush every 10k entries
+
+q2b   =  np.zeros(1, dtype=int)
+xbb   = np.zeros(1, dtype=int)
+tb    = np.zeros(1, dtype=int)
+phib  = np.zeros(1, dtype=int)
+pIdxb = np.zeros(1, dtype=int)
+count = np.zeros(1, dtype=int)
+
+tree_raw.Branch("q2_bin", q2b, "q2_bin/I")
+tree_raw.Branch("xb_bin", xbb, "xb_bin/I")
+tree_raw.Branch("t_bin", tb, "t_bin/I")
+tree_raw.Branch("phi_bin", phib, "phi_bin/I")
+tree_raw.Branch("count", count, "count/I")
+
+### ---------------------------------- XSECTION Workflow ---------------------------------- ###
 for q2 in range(bins_map[0]):
     dq2 = Q2_edges[q2+1] - Q2_edges[q2]
     for xb in range(bins_map[1]):
@@ -339,31 +397,50 @@ for q2 in range(bins_map[0]):
             dt = t_edges[t+1] - t_edges[t]
             for phi in range(bins_map[3]):
                 dphi = phi_edges[phi+1] - phi_edges[phi]
+        
+                mask_bin = (in_range) & (iQ2==q2) & (iXb==xb) & (it==t) & (iphi==phi)
+                num_events = np.sum(mask_bin)
+                if num_events > 0:
+                    q2b[0], xbb[0], tb[0], phib[0], count[0] = q2, xb, t, phi, num_events
+                    tree_raw.Fill()
+
                 bin_volume = dq2 * dxb * dt * dphi
+                bin_variance = 0
+                bin_yield = 0
+
                 # loop over 2 possible proton topologies:
                 for p in range(2):
-                    mask_bin = (in_range) & (iQ2==q2) & (iXb==xb) & (it==t) & (iphi==phi) & (pIdx==p)
-                    num_events = len(mask_bin[mask_bin])
+                    mask_bin_p = mask_bin & (pIdx==p)
+                    num_events = np.sum(mask_bin_p)
+                    
                     if args.verbose and num_events > 0:
                         print(f"Bin [Q2: {q2}, Xb: {xb}, t: {t}, phi: {phi}, pIdx: {p}] += {num_events} events.")
-                    if not np.any(mask_bin):
+                    if not np.any(mask_bin_p):
                         continue
                     
-                    surv_mask = mask_bin.copy()
+                    surv_mask = mask_bin_p.copy()
                     for var in exclusive_vars:
-                        if args.verbose and len(surv_mask[surv_mask]) > 0:
-                            print(f"Initiating {var} cuts with {len(surv_mask[surv_mask])} events.")
-                        vals = df_numpy[f"eppi0.{var}"][surv_mask]
-                        mu, sigma = fit_exclusive(vals, name=var)
-                        if args.verbose:
-                            print(f"{var} cuts obtain mu = {mu:.5f} sigma = {sigma:.5f}")
-                        surv_mask[surv_mask] &= np.abs(vals - mu) <= n_sigma_signal*sigma
-                        if args.verbose and len(surv_mask[surv_mask]) > 0:
-                            print(f"{var} cuts survived by {len(surv_mask[surv_mask])} events. ")
+                        if args.verbose and np.sum(surv_mask) > 0:
+                            print(f"Initiating {var} cuts with {np.sum(surv_mask)} events.")
+                        if args.global_cuts:
+                            if (var, p) not in global_cuts:
+                                continue  # no global fit possible for this topology
+                            mu, sigma = global_cuts[(var, p)]
+                        else:
+                            vals = df_numpy[f"eppi0.{var}"][surv_mask]
+                            mu, sigma = fit_exclusive(vals, name=var, nbins=200)
 
-                    # Sideband subtraction (m_gg)
+                        vals = df_numpy[f"eppi0.{var}"][surv_mask]
+                        surv_mask[surv_mask] &= np.abs(vals - mu) <= n_sigma_signal*sigma
+
+                        if args.verbose:
+                            print(f"{var} cut applied with mu={mu:.5f}, sigma={sigma:.5f}, "
+                                  f"survived {np.sum(surv_mask)} events")
+                        
+                    
+                    ### ------------ Sideband subtraction (m_gg) ------------ ###
                     mgg_vals = df_numpy["eppi0.m_gg"][surv_mask]
-                    mu_mgg, sigma_mgg = fit_exclusive(mgg_vals, nbins=200)
+                    mu_mgg, sigma_mgg = fit_exclusive(mgg_vals, name="m_gg", nbins=200)
                     sig_mask = np.abs(mgg_vals - mu_mgg) < n_sigma_signal*sigma_mgg
                     sb_mask  = ((mu_mgg - n_sigma_sb_max*sigma_mgg <= mgg_vals) & 
                                 (mgg_vals < mu_mgg - n_sigma_sb_min*sigma_mgg)) | \
@@ -374,23 +451,34 @@ for q2 in range(bins_map[0]):
                     n_sb  = np.sum(sb_mask)
                     w_sig = 2 * n_sigma_signal * sigma_mgg
                     w_sb  = 2 * (n_sigma_sb_max - n_sigma_sb_min) * sigma_mgg
+                    alpha = w_sig / w_sb
                     if w_sb > 0:
-                        n_bkg = n_sb * (w_sig / w_sb)
+                        n_bkg = n_sb * alpha
                         if args.verbose and n_sig > 0:
                             print(f"Bin [Q2: {q2}, Xb: {xb}, t: {t}, phi: {phi}] contains {n_sig} signal events and {n_bkg} background events.")
-                        hist4D[q2, xb, t, phi] += max(n_sig - n_bkg, 0.0)
-                        yield4D[q2, xb, t, phi] += max(n_sig - n_bkg, 0.0) / bin_volume
+                        bin_variance += n_sig + (alpha**2) * n_sb
+                        bin_yield += max(n_sig - n_bkg, 0.0)
 
                     # Mark surviving events
                     surv_mask_all[surv_mask] = True
+                
+                side_sub_yield4D[q2, xb, t, phi] = bin_yield
+                errs4D[q2, xb, t, phi] = np.sqrt(bin_variance) / bin_volume / LUM_INT / BR
+                xsec4D[q2, xb, t, phi] = bin_yield / bin_volume / LUM_INT / BR
+
+if acceptance is not None:
+    xsec4D = np.divide(xsec4D, acceptance, out=np.zeros_like(xsec4D), where=acceptance>0)
+    errs4D = np.divide(errs4D, acceptance, out=np.zeros_like(errs4D), where=acceptance>0)
 
 surviving_indices = np.flatnonzero(surv_mask_all)
 print(f"Total surviving events: {len(surviving_indices)}")
-print(f"Sum after 3σ cuts + sideband subtraction: {hist4D.sum():.3f}")
+print(f"Total yield after 3σ cuts + sideband subtraction: {side_sub_yield4D.sum():.3f}")
 
 ### ----------------- Fill survival ROOT histograms ----------------- ###
-out_file = ROOT.TFile("exclusive_survival_summary.root", "RECREATE")
 hist_dict = {}
+graph_list = []
+fit_list = []
+
 nbins_default = 100
 
 for var in ex_vars:
@@ -402,82 +490,80 @@ for var in ex_vars:
     h.Write()
     hist_dict[var] = h
 
-h_Q2_Xb = ROOT.TH2D(
-    "h_Q2_Xb", "Q^{2} vs x_{B} Coverage; x_{B}; Q^{2} [GeV^{2}]; Events",
-    len(Xb_edges)-1, Xb_edges, len(Q2_edges)-1, Q2_edges
-)
-
-for q2, xb in zip(df_numpy["dis.Q2"][surviving_indices], df_numpy["dis.Xb"][surviving_indices]):
-    h_Q2_Xb.Fill(xb, q2)
+h_Q2_Xb = ROOT.TH2D("h_Q2_Xb", "Q^{2} vs x_{B} Coverage; x_{B}; Q^{2} [GeV^{2}]; Events",
+                    len(Xb_edges)-1, Xb_edges, len(Q2_edges)-1, Q2_edges)
+for q2, xb in zip(df_numpy["dis.Q2"][surviving_indices], df_numpy["dis.Xb"][surviving_indices]): h_Q2_Xb.Fill(xb, q2)
 h_Q2_Xb.Write()
 
+tree_raw.AutoSave("FlushBaskets")
 out_file.Close()
 print("Saved exclusive histograms to exclusive_summary.root")
 
-### ----------------- Acceptance correction: ----------------- ###
-acceptance = None
-if args.gemc:
-    cols_gemc = ["gen_dis.Q2","gen_dis.Xb","gen_eppi0.t","gen_eppi0.trentoPhi",
-                 "dis.Q2","dis.Xb","eppi0.t","eppi0.trentoPhi"]
-    df_numpy_gemc = load_gemc(args.gemc, cols_gemc)
-    acceptance = compute_acceptance(df_numpy_gemc, Q2_edges, Xb_edges, t_edges, phi_edges, hist4D.shape)
-    save_acceptance_maps(acceptance, Q2_edges, Xb_edges, t_edges, phi_edges)
-
-if acceptance is not None:
-    values = np.divide(yield4D, acceptance, out=yield4D, where=acceptance>0)
-else:
-    values = yield4D
-
 ### ----------------- Project 4D histogram to phi ----------------- ###
 out_file = ROOT.TFile("phi_xsec.root", "RECREATE")
-
 Ebeam = args.E
 
+phi_centers = 0.5 * (phi_edges[:-1] + phi_edges[1:])
+phi_widths = 0.5 * (phi_edges[1:] - phi_edges[:-1])
+
 for q2 in range(bins_map[0]):
-    Q2_center = 0.5 * (Q2_edges[q2] + Q2_edges[q2+1])
     for xb in range(bins_map[1]):
-        Xb_center = 0.5 * (Xb_edges[xb] + Xb_edges[xb+1])
-
-        # compute the flux for this (Q2, xb) bin
-        gamma = gamma_flux(Q2_center, Xb_center, Ebeam)
-        if gamma <= 0:
-            print("uh oh")
-            continue  # skip unphysical bins
-
         for t in range(bins_map[2]):
-            phi_yields = yield4D[q2, xb, t, :]
+            phi_yields = xsec4D[q2, xb, t, :]
+            phi_errors = errs4D[q2, xb, t, :]
+
             if np.sum(phi_yields) == 0:
                 continue
 
-            # Compute bin centers and errors
-            phi_centers = 0.5 * (phi_edges[:-1] + phi_edges[1:])
-            phi_widths  = 0.5 * (phi_edges[1:] - phi_edges[:-1])
-            errors = np.sqrt(phi_yields)  # Poisson errors on counts
+            # surviving event mask for this 4D bin
+            mask_bin = (iQ2 == q2) & (iXb == xb) & (it == t) & surv_mask_all
+            if not np.any(mask_bin):
+                continue
 
-            # divide by flux
-            sigma_red = phi_yields / gamma
-            sigma_red_err = errors / gamma
-            print(f"Bin Q2={q2}, Xb={xb}, t={t}: sigma_red sum={np.sum(sigma_red)}")
+            # compute bin centers for Q2 and Xb (arithmetic mean of surviving events)
+            Q2_center = np.mean(df_numpy["dis.Q2"][mask_bin])
+            Xb_center = np.mean(df_numpy["dis.Xb"][mask_bin])
+
+            # compute virtual photon flux
+            gamma = gamma_flux(Q2_center, Xb_center, Ebeam)
+            if gamma <= 0:
+                continue
+
+            # divide by flux to get reduced cross section
+            xsec_red = phi_yields / gamma
+            xsec_red_err = phi_errors / gamma
 
             n_points = len(phi_centers)
             gr_name = f"gr_phi_q{q2}_xb{xb}_t{t}"
-            gr_title = (f"Q2={Q2_edges[q2]:.2f}-{Q2_edges[q2+1]:.2f}, "
-                        f"Xb={Xb_edges[xb]:.2f}-{Xb_edges[xb+1]:.2f}, "
-                        f"-t={t_edges[t]:.2f}-{t_edges[t+1]:.2f}; "
-                        f"#phi [deg]; "
-                        "#pi^{0} Reduced Cross Section [arb.]")
+            gr_title = (
+                f"Q2={Q2_edges[q2]:.2f}-{Q2_edges[q2+1]:.2f}, "
+                f"Xb={Xb_edges[xb]:.2f}-{Xb_edges[xb+1]:.2f}, "
+                f"-t={t_edges[t]:.2f}-{t_edges[t+1]:.2f}; "
+                f"#phi [deg]; #pi^0 Reduced Cross Section [fb/GeV^2]"
+            )
+
             gr = ROOT.TGraphErrors(
                 n_points,
                 phi_centers.astype(np.float64),
-                sigma_red.astype(np.float64),
+                xsec_red.astype(np.float64),
                 phi_widths.astype(np.float64),
-                sigma_red_err.astype(np.float64)
+                xsec_red_err.astype(np.float64)
             )
+
+            # fit: A + B cos(phi) + C cos(2 phi)
+            fit_func = ROOT.TF1("fit_phi", "[0] + [1]*cos(x*TMath::DegToRad()) + [2]*cos(2*x*TMath::DegToRad())", 0, 360)
+            fit_func.SetParameters(np.mean(xsec_red), 0.1*np.mean(xsec_red), 0.1*np.mean(xsec_red))
+            gr.Fit(fit_func, "QR")
+
             gr.SetName(gr_name)
             gr.SetTitle(gr_title)
             gr.Draw("AP")
+            fit_func.Draw("same")
             gr.GetXaxis().SetRangeUser(0, 360)
             gr.Write()
+
+            graph_list.append(gr)      # keep reference
+            fit_list.append(fit_func)  # keep reference
 
 out_file.Close()
 print("Saved phi-projected reduced cross sections to phi_xsec.root")

@@ -1,5 +1,4 @@
 #include "ProcessManager.h"
-
 #include "nlohmann/json.hpp"
 #include "FiducialCuts.h"       
 #include "PhysicalConstants.h"  // useful constants
@@ -242,7 +241,6 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
         float e_vz = -999;
         TLorentzVector lv_ePrime; // will store the first electron’s 4-vector      
 
-
         for (int i = 0; i < numRec; i++) {
             // Initialize ALL vars:
             ev_.flush();
@@ -269,6 +267,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
                 
                 if (det == 1) {
                     float ePCAL  = p->cal(1) ? p->cal(1)->getEnergy() : 0;
+                    if (ePCAL <= 0.07) continue;
                     float eECIN  = p->cal(4) ? p->cal(4)->getEnergy() : 0;
                     float eECOUT = p->cal(7) ? p->cal(7)->getEnergy() : 0;
                     float sf = (ePCAL + eECIN + eECOUT) / p->getP();
@@ -373,6 +372,7 @@ void ProcessManager::processEvent(clas12::clas12reader& c12) {
 
                 if (det == 1) {
                     float ePCAL  = rec->cal(1) ? rec->cal(1)->getEnergy() : 0;
+                    if (ePCAL <= 0.07) continue;
                     float eECIN  = rec->cal(4) ? rec->cal(4)->getEnergy() : 0;
                     float eECOUT = rec->cal(7) ? rec->cal(7)->getEnergy() : 0;
                     float sf = (ePCAL + eECIN + eECOUT) / rec->getP();
@@ -516,6 +516,8 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
 
         if (detEle == 1) {
             float ePCAL  = ele->cal(1) ? ele->cal(1)->getEnergy() : 0;
+            // Reject if electron fails threshold energy deposit (RGA analysis note)
+            if (ePCAL <= 0.07) continue;
             float eECIN  = ele->cal(4) ? ele->cal(4)->getEnergy() : 0;
             float eECOUT = ele->cal(7) ? ele->cal(7)->getEnergy() : 0;
             float sf = (ePCAL + eECIN + eECOUT) / ele->getP();
@@ -734,6 +736,7 @@ void ProcessManager::processEPPI0GEMC(clas12::clas12reader& c12) {
 
                 if (det == 1) {
                     float ePCAL  = rec->cal(1) ? rec->cal(1)->getEnergy() : 0;
+                    if (ePCAL <= 0.07) continue;
                     float eECIN  = rec->cal(4) ? rec->cal(4)->getEnergy() : 0;
                     float eECOUT = rec->cal(7) ? rec->cal(7)->getEnergy() : 0;
                     float sf = (ePCAL + eECIN + eECOUT) / rec->getP();

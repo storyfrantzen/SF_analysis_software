@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
     t->GetEntry(0);
 
     std::cout << "Events processed: " << events
-              << "\nAccumulated beam charge: " << charge << " nC" 
-              << "\nFills made: " << fills << std::endl;
+              << "\nFills made: " << fills
+              << "\nAccumulated beam charge: " << charge << " nC" << std::endl;
     return 0;
 }
