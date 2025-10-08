@@ -1,7 +1,7 @@
 {
     "ebeam": 10.604,
     "torus": -1,
-    "channel": "inclusiveGEMC",
+    "channel": "inclusiveMATCH",
     "branches": {
         "rec": ["vz", "xFT", "yFT", "xDC1", "yDC1", "xDC2", "yDC2", "xDC3", "yDC3",
                 "uPCAL", "vPCAL", "wPCAL", "uECIN", "vECIN", "wECIN", "uECOUT", "vECOUT", "wECOUT",

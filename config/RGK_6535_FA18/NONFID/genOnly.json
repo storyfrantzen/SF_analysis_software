@@ -1,7 +1,0 @@
-{
-    "ebeam": 6.535,
-    "torus": 1,
-    "channel": "genOnly",
-    "isMC": true,
-    "maxEvents": 5e5
-}

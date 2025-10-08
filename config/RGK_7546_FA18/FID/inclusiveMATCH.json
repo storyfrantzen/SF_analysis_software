@@ -1,13 +1,13 @@
 {
-    "ebeam": 10.604,
-    "torus": -1,
-    "channel": "inclusiveGEMC",
+    "ebeam": 7.546,
+    "torus": 1,
+    "channel": "inclusiveMATCH",
     "branches": {
         "rec": ["vz", "xFT", "yFT", "xDC1", "yDC1", "xDC2", "yDC2", "xDC3", "yDC3",
                 "uPCAL", "vPCAL", "wPCAL", "uECIN", "vECIN", "wECIN", "uECOUT", "vECOUT", "wECOUT",
                 "E_PCAL", "E_ECIN", "E_ECOUT"]
     },
     "isMC": true,
-    "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
-    "tag": "RGA_NONFID"
+    "fiducialCuts": ["DCEdges_RGA", "FT_RGA", "ECAL_RGK", "ECALEdges_RGK", "CVT_RGA"],
+    "tag": "RGK_FID"
 }

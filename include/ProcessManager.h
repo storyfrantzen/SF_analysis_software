@@ -39,6 +39,7 @@ public:
     void processEvent(clas12::clas12reader& c12);
     void processEPPI0REC(clas12::clas12reader& c12);
     void processEPPI0GEMC(clas12::clas12reader& c12);
+    void processEPPI0MATCH(clas12::clas12reader& c12);
 
 private:
 

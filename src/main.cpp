@@ -116,7 +116,7 @@ int main(int argc, char** argv) {
     } 
 
     // Prepare physics analysis:
-    auto config_c12=chain.GetC12Reader();
+    auto config_c12 = chain.GetC12Reader();
     auto& c12=chain.C12ref();
 
     // QA:
@@ -138,7 +138,7 @@ int main(int argc, char** argv) {
     while (chain.Next()) { 
         if (maxEvents > 0 && PM.eventsProcessed() >= maxEvents) break;
         PM.processEvent(*c12);
-        if (PM.eventsProcessed() % 100000 == 0) std::cout << PM.eventsProcessed() << " events have been processed. \n";
+        if (PM.eventsProcessed() % 1000000 == 0) std::cout << PM.eventsProcessed() << " events have been processed. \n";
     }
 
     double totalCharge = chain.TotalBeamCharge();

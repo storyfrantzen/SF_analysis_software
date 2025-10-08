@@ -16,11 +16,11 @@
         "description": "Physics channel to analyze",
         "type": "string",
         "options": {
-            "genOnly": "Generated events only",
             "inclusiveREC": "Accept all PID",
-            "inclusiveGEMC": "Accept all PID which satisfy GEN<->REC matching",
+            "inclusiveMATCH": "Accept all PID which satisfy GEN<->REC matching",
             "eppi0REC": "Exclusive ep->e'p'pi0",
-            "eppi0GEMC": "Exclusive ep->e'p'pi0 with GEN<->REC matching"
+            "eppi0GEMC": "Exclusive ep->e'p'pi0, no matching",
+            "eppi0MATCH": "Exclusive ep->e'p'pi0 with GEN<->REC matching"
         }
     },
     "fiducialCuts": {

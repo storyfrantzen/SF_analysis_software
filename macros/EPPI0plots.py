@@ -110,10 +110,11 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
         "h_mgg": ROOT.TH1D("h_mgg", "M_{#gamma#gamma}; M_{#gamma#gamma} [GeV]; Counts", 200, 0.098, 0.17),
         "h_mgg_pFD": ROOT.TH1D("h_mgg_pFD", "pFD M_{#gamma#gamma}; M_{#gamma#gamma} [GeV]; Counts", 200, 0.098, 0.17),
         "h_mgg_pCD": ROOT.TH1D("h_mgg_pCD", "pCD M_{#gamma#gamma}; M_{#gamma#gamma} [GeV]; Counts", 200, 0.098, 0.17),
-        "h_Q2": ROOT.TH1D("h_Q2", "Q^{2} Distribution; Q^{2} [GeV^{2}]; Counts", 250, 0, 10),
-        "h_W": ROOT.TH1D("h_W", "W Distribution; W [GeV]; Counts", 100, 2, 3.5),
-        "h_t": ROOT.TH1D("h_t", "-t Distribution; -t [GeV^{2}]; Counts", 100, 0, 4),
-        "h_phiT": ROOT.TH1D("h_phiT", "Trento #Phi Distribution; #Phi_{T} [deg]; Counts", 180, 0, 360),
+        "h_Xb": ROOT.TH1D("h_Xb", "x_{B}; x_{B}; Counts", 250, 0, 0.8),
+        "h_Q2": ROOT.TH1D("h_Q2", "Q^{2}; Q^{2} [GeV^{2}]; Counts", 250, 0, 10),
+        "h_W": ROOT.TH1D("h_W", "W; W [GeV]; Counts", 100, 2, 3.5),
+        "h_t": ROOT.TH1D("h_t", "-t; -t [GeV^{2}]; Counts", 100, 0, 4),
+        "h_phiT": ROOT.TH1D("h_phiT", "#Phi_{T}; #Phi_{T} [deg]; Counts", 180, 0, 360),
         "h_theta_e_g1": ROOT.TH1D("h_theta_e_g1", "#theta_{e#gamma_{1}}; #theta [deg]; Counts", 90, 0, 90),
         "h_theta_e_g2": ROOT.TH1D("h_theta_e_g2", "#theta_{e#gamma_{2}}; #theta [deg]; Counts", 90, 0, 90),
         "h_theta_g1_g2": ROOT.TH1D("h_theta_g1_g2", "#theta_{#gamma_{1}#gamma_{2}}; #theta [deg]; Counts", 90, 0, 90),
@@ -131,7 +132,7 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
         "h_m_eggX_pCD": ROOT.TH1D("h_m_eggX_pCD", "pCD M_{e#gamma #gamma X}; M_{e#gamma #gamma X} [GeV]; Counts", 200, 0, 2),
         "h_px_miss": ROOT.TH1D("h_px_miss", "Missing Momentum #Delta P_{x}; #Delta P_{x} [GeV]; Counts", 200, -0.8, 0.8),
         "h_py_miss": ROOT.TH1D("h_py_miss", "Missing Momentum #Delta P_{y}; #Delta P_{y} [GeV]; Counts", 200, -0.8, 0.8),
-        "h_pz_miss": ROOT.TH1D("h_pz_miss", "Missing Momentum #Delta P_{z}; #Delta P_{z} [GeV]; Counts", 200, -0.3, 0.6),
+        "h_pz_miss": ROOT.TH1D("h_pz_miss", "Missing Momentum #Delta P_{z}; #Delta P_{z} [GeV]; Counts", 200, -0.8, 1),
         "h_E_miss": ROOT.TH1D("h_E_miss", "E_{miss}; E_{miss} [GeV]; Counts", 200, -0.8, 1.5),
         "h_E_miss_pFD": ROOT.TH1D("h_E_miss_pFD", "pFD E_{miss}; E_{miss} [GeV]; Counts", 200, -0.8, 1.5),
         "h_E_miss_pCD": ROOT.TH1D("h_E_miss_pCD", "pCD E_{miss}; E_{miss} [GeV]; Counts", 200, -0.8, 1.5),
@@ -168,6 +169,7 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
     tree.Draw("eppi0.m_gg >> h_mgg")
     tree.Draw("eppi0.m_gg >> h_mgg_pFD", "p.det==1")
     tree.Draw("eppi0.m_gg >> h_mgg_pCD", "p.det==2")
+    tree.Draw("dis.Xb >> h_Xb")
     tree.Draw("dis.Q2 >> h_Q2")
     tree.Draw("dis.W >> h_W")
     tree.Draw("t >> h_t")
