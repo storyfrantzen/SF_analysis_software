@@ -8,7 +8,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 
 if len(sys.argv) < 4:
-    print("Usage: python quilt2D.py <input.root> <t_index> <chi2_threshold>")
+    print("Usage: python quilt2D.py <input.root> <chi2_threshold> <t_index>")
     sys.exit(1)
 
 input_file = sys.argv[1]
@@ -120,11 +120,6 @@ if not os.path.exists(output_dir):
 outname = os.path.join(output_dir, f"phi_quilt_t{t_index}.png")
 plt.savefig(outname, dpi=300)
 print(f"Saved quilt to {outname}")
-
-plt.show()
-root_file.Close()
-
-
 
 plt.show()
 root_file.Close()

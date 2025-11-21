@@ -41,6 +41,7 @@ void EventVars::fill(const std::unordered_set<std::string>& enabledBranches, cla
     runNum       = c12.runconfig()->getRun();
     eventNum     = c12.runconfig()->getEvent();
     helicity     = c12.event()->getHelicity();
+    charge       = c12.event()->getBeamCharge();
 
     numElectrons = safeGetIfEnabled(enabledBranches, "numElectrons", c12.getByID(11).size());
     numProtons   = safeGetIfEnabled(enabledBranches, "numProtons", c12.getByID(2212).size());
@@ -156,6 +157,43 @@ void DISVars::fill(const TLorentzVector& lv_ePrime, double ebeam, double m_targe
 
 };
 
+double EPPI0Vars::computeTrentoPhi(const TLorentzVector& lv_beam,
+                                   const TLorentzVector& lv_target,
+                                   const TLorentzVector& lv_ePrime,
+                                   const TLorentzVector& lv_hadron) const {
+    // Virtual photon
+    TLorentzVector lv_q = lv_beam - lv_ePrime;
+
+    // Total gamma*-p system
+    TLorentzVector lv_tot = lv_q + lv_target;
+
+    // Boost vector to gamma*-p CM
+    TVector3 beta = -lv_tot.BoostVector();
+
+    // Boost all relevant vectors
+    TLorentzVector beam_b   = lv_beam;   beam_b.Boost(beta);
+    TLorentzVector eout_b   = lv_ePrime; eout_b.Boost(beta);
+    TLorentzVector q_b      = lv_q;      q_b.Boost(beta);
+    TLorentzVector had_b    = lv_hadron; had_b.Boost(beta);
+
+    // Compute plane normals
+    TVector3 n_lepton = beam_b.Vect().Cross(eout_b.Vect());
+    if(n_lepton.Mag2() > 0) n_lepton = n_lepton.Unit();
+
+    TVector3 n_hadron = had_b.Vect().Cross(q_b.Vect());
+    if(n_hadron.Mag2() > 0) n_hadron = n_hadron.Unit();
+
+    // Signed Trento phi
+    TVector3 q_hat = q_b.Vect().Unit();
+    double cosPhi = n_lepton.Dot(n_hadron);
+    double sinPhi = q_hat.Dot(n_lepton.Cross(n_hadron));
+
+    double phi = std::atan2(sinPhi, cosPhi); // [-pi, pi]
+
+    return phi;
+}
+
+
 void EPPI0Vars::fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_pPrime, 
                      const TLorentzVector& lv_g1, const TLorentzVector& lv_g2, double ebeam, double m_target) {
     // Beam and target 4-vectors:
@@ -191,21 +229,24 @@ void EPPI0Vars::fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_p
     // NOTE: "t" is implicitly -t!
     t = -1 * (lv_pPrime - lv_target).M2();
 
-    // Trento Phi: angle from lepton plane to hadron plane, w.r.t. virtual photon momentum
-    // 3 vectors
-    TVector3 v_beam      = lv_beam.Vect();            // incoming electron
-    TVector3 v_ePrime    = lv_ePrime.Vect();         // scattered electron
-    TVector3 v_q         = (v_beam - v_ePrime);     // virtual photon
-    TVector3 v_pPrime    = lv_pPrime.Vect();         // final hadron, e.g., proton
+    // // Trento Phi: angle from lepton plane to hadron plane, w.r.t. virtual photon momentum
+    // // 3 vectors
+    // TVector3 v_beam      = lv_beam.Vect();            // incoming electron
+    // TVector3 v_ePrime    = lv_ePrime.Vect();         // scattered electron
+    // TVector3 v_q         = (v_beam - v_ePrime);     // virtual photon
+    // TVector3 v_pPrime    = lv_pPrime.Vect();         // final hadron, e.g., proton
 
-    // Plane normals (order matters!)
-    TVector3 n_lepton = v_beam.Cross(v_ePrime).Unit();     // lepton plane
-    TVector3 n_hadron = v_pPrime.Cross(v_q).Unit();        // hadron plane
+    // // Plane normals (order matters!)
+    // TVector3 n_lepton = v_beam.Cross(v_ePrime).Unit();     // lepton plane
+    // TVector3 n_hadron = v_pPrime.Cross(v_q).Unit();        // hadron plane
 
-    double cosPhi = n_lepton.Dot(n_hadron);
-    double sinPhi = v_q.Unit().Dot(n_lepton.Cross(n_hadron));
+    // double cosPhi = n_lepton.Dot(n_hadron);
+    // double sinPhi = v_q.Unit().Dot(n_lepton.Cross(n_hadron));
 
-    trentoPhi = std::atan2(sinPhi, cosPhi);
+    // trentoPhi = std::atan2(sinPhi, cosPhi);
+
+    // Using recoil proton
+    trentoPhi = computeTrentoPhi(lv_beam, lv_target, lv_ePrime, lv_pPrime);
 
 };
 

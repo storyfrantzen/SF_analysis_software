@@ -1,0 +1,11 @@
+{
+    "ebeam": 6.394,
+    "torus": 1,
+    "channel": "inclusiveREC",
+    "branches": {
+        "rec": ["vz", "xFT", "yFT", "xDC1", "yDC1", "xDC2", "yDC2", "xDC3", "yDC3",
+                "uPCAL", "vPCAL", "wPCAL", "uECIN", "vECIN", "wECIN", "uECOUT", "vECOUT", "wECOUT",
+                "E_PCAL", "E_ECIN", "E_ECOUT"]
+    },
+    "tag": "RGK_NONFID"
+}

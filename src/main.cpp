@@ -9,6 +9,7 @@
 #include "clas12reader.h"
 #include "HipoChain.h"
 #include "ProcessManager.h"
+#include "QADB.h" 
 
 #include "nlohmann/json.hpp"
 
@@ -119,31 +120,39 @@ int main(int argc, char** argv) {
     auto config_c12 = chain.GetC12Reader();
     auto& c12=chain.C12ref();
 
-    // QA:
-    if (!config.value("isMC", false)) {
-        if (config_c12->qadb() != nullptr) {
-            for (const auto& tag : config.value("qa", std::vector<std::string>{})) {
-                config_c12->db()->qadb_addQARequirement(tag);
-            }
-            if (!config.value("qa", std::vector<std::string>{}).empty()) {
-                config_c12->applyQA();
-            }
-        }
+    // --- Instantiate raw QADB ---
+    QA::QADB qa("latest"); 
+    for (const auto& tag : config.value("qa", std::vector<std::string>{})) {
+        qa.CheckForDefect(tag.c_str());
     }
 
-    // Instantiate ProcessManager for workflow:
+    // --- Prepare ProcessManager ---
     ProcessManager PM(config);
+    int maxEvents = config.value("maxEvents", -1);
 
-    int maxEvents = config.value("maxEvents", -1);  // -1 means "no limit"
-    while (chain.Next()) { 
+    while (chain.Next()) {
         if (maxEvents > 0 && PM.eventsProcessed() >= maxEvents) break;
+
+        int run = c12->runconfig()->getRun();   // assuming your reader has a `run` field
+        int event = c12->runconfig()->getEvent(); // same for `event`
+
+        bool passQA = true;
+        if (!config.value("isMC", false) && !config.value("qa", std::vector<std::string>{}).empty()) {
+            passQA = qa.Pass(run, event);
+            if (passQA) qa.AccumulateCharge();
+        }
+
+        if (!passQA) continue;
+
         PM.processEvent(*c12);
-        if (PM.eventsProcessed() % 1000000 == 0) std::cout << PM.eventsProcessed() << " events have been processed. \n";
+
+        if (PM.eventsProcessed() % 1000000 == 0)
+            std::cout << PM.eventsProcessed() << " events processed.\n";
     }
 
-    double totalCharge = chain.TotalBeamCharge();
+    double totalCharge = qa.GetAccumulatedCharge();
     PM.finalize(totalCharge);
-    
+
     auto finish = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = finish - start;
     std::cout << "Elapsed time: " << elapsed.count() << " s" << std::endl;

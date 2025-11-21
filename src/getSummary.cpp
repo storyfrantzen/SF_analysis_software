@@ -1,12 +1,9 @@
-
 #include "TFile.h"
 #include "TTree.h"
 #include <iostream>
 #include <TSystem.h>
 
 int main(int argc, char** argv) {
-    // Load compiled dictionary. Note: NOT necessary, just suppresses warning messages.
-    gSystem->Load("/work/clas12/storyf/SF_analysis_software/build/install/lib/libBranchVarsDict.so");
 
     if (argc < 2) {
         std::cerr << "Usage: getSummary <rootfile>" << std::endl;

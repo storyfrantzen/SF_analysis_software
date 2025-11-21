@@ -11,7 +11,7 @@ ROOT.gSystem.Load("/work/clas12/storyf/SF_analysis_software/build/install/lib/li
 # constants:
 ELECTRON_CHARGE = 1.602e-19 # Coulombs
 TARGET_LENGTH = 5.00 # cm
-RHO_LH2 = 0.07 # g / cm3
+RHO_LH2 = 0.071 # g / cm3
 N_A = 6.02214e23
 ALPHA_EM = 1/137.035999084
 PROTON_MASS = 0.9382720813  # proton mass [GeV]
@@ -200,7 +200,7 @@ def load_gemc(gemc_file, cols):
         df_numpy[k] = coerce_scalar_column(df_numpy[k])
     return df_numpy
 
-def compute_acceptance(df_numpy_gemc, Q2_edges, Xb_edges, t_edges, phi_edges, shape, valid_mask=None):
+def compute_acceptance(df_numpy_gemc, Q2_edges, Xb_edges, t_edges, phi_edges, shape, valid_mask=None, min_acceptance=0.005):
     """Return acceptance[Q2, Xb, t, phi] from GEMC numpy arrays."""
     gen_counts = np.zeros(shape, dtype=float)
     rec_counts = np.zeros(shape, dtype=float)
@@ -229,7 +229,11 @@ def compute_acceptance(df_numpy_gemc, Q2_edges, Xb_edges, t_edges, phi_edges, sh
                 rec_counts[iQ2_rec[i], iXb_rec[i], it_rec[i], iphi_rec[i]] += 1
 
     acceptance = np.divide(rec_counts, gen_counts, out=np.zeros_like(rec_counts), where=gen_counts>0)
-    return acceptance, gen_counts, rec_counts
+
+    # --- mask bins below threshold ---
+    acceptance_masked = np.where(acceptance >= min_acceptance, acceptance, np.nan)
+
+    return acceptance_masked, gen_counts, rec_counts
 
 def save_acceptance_maps(acceptance, gen_counts, rec_counts,
                          Q2_edges, Xb_edges, t_edges, phi_edges,
@@ -281,8 +285,8 @@ def save_acceptance_maps(acceptance, gen_counts, rec_counts,
                 # fill bins
                 for phi in range(len(phi_edges)-1):
                     val = acceptance[q2, xb, t, phi]
-                    h_acc.SetBinContent(phi+1, val)
-                    if (not np.isnan(val)) and val > 0:
+                    if not np.isnan(val):
+                        h_acc.SetBinContent(phi+1, val)
                         h_global.Fill(val)
 
                     h_gen.SetBinContent(phi+1, gen_counts[q2, xb, t, phi])
@@ -311,8 +315,8 @@ def save_acceptance_maps(acceptance, gen_counts, rec_counts,
 
                     # legend
                     leg = ROOT.TLegend(0.65, 0.75, 0.9, 0.9)
-                    leg.AddEntry(h_gen, "Generated", "f")
-                    leg.AddEntry(h_rec, "Reconstructed", "f")
+                    leg.AddEntry(h_gen, f"Generated (N={int(h_gen.Integral())})", "f")
+                    leg.AddEntry(h_rec, f"Reconstructed (N={int(h_rec.Integral())})", "f")
                     leg.Draw()
 
                     c.Update()
@@ -377,7 +381,6 @@ args = parser.parse_args()
 if args.verbose:
     log_file = open("xsec_log.txt", "w")
     sys.stdout = log_file
-
 
 ### --------------- Read eppi0REC ROOT file --------------- ###
 f = ROOT.TFile(args.input_file, "READ")
@@ -486,6 +489,9 @@ acceptance = None
 if args.gemc:
     cols_gemc = ["gen_dis.Q2","gen_dis.Xb","gen_eppi0.t","gen_eppi0.trentoPhi", "dis.Q2","dis.Xb","eppi0.t","eppi0.trentoPhi"]
     df_numpy_gemc = load_gemc(args.gemc, cols_gemc)
+    # total generated events
+    total_gen_events = len(df_numpy_gemc["gen_dis.Q2"])
+    print(f"Total generated GEMC events: {total_gen_events}")
     valid_mask = is_valid_rec(df_numpy_gemc)
     print(f"Non-sentinel GEMC reconstructed events: {np.sum(valid_mask)}")
     acceptance, gen_counts, rec_counts = compute_acceptance(df_numpy_gemc, Q2_edges, Xb_edges, t_edges, phi_edges, xsec4D.shape, valid_mask)
@@ -496,7 +502,7 @@ out_file = ROOT.TFile("survival_summary.root", "RECREATE")
 tree_raw = ROOT.TTree("raw_counts", "Raw event counts per bin")
 tree_raw.SetAutoFlush(10000)  # flush every 10k entries
 
-q2b   =  np.zeros(1, dtype=int)
+q2b   = np.zeros(1, dtype=int)
 xbb   = np.zeros(1, dtype=int)
 tb    = np.zeros(1, dtype=int)
 phib  = np.zeros(1, dtype=int)
@@ -509,11 +515,19 @@ tree_raw.Branch("t_bin", tb, "t_bin/I")
 tree_raw.Branch("phi_bin", phib, "phi_bin/I")
 tree_raw.Branch("count", count, "count/I")
 
+### ----------- Helpers for bins near acceptance boundary ----------- ###
+Ebeam = args.E
+W_min = 2.0   # GeV
+Q2_min = 1.0  # GeV^2
+
+# numerical integration settings
+N_rie = 100             # number of samples per xB bin (Riemann sum)
+eprime_scale = 0.81     # 1 - min(p_e')/E_beam, ONLY A PLACEHOLDER BASED ON RGK VALUES CURRENTLY
+Q2_left_slope = 2 * PROTON_MASS * Ebeam * eprime_scale
+
 ### ---------------------------------- XSECTION Workflow ---------------------------------- ###
 for q2 in range(bins_map[0]):
-    dq2 = Q2_edges[q2+1] - Q2_edges[q2]
     for xb in range(bins_map[1]):
-        dxb = Xb_edges[xb+1] - Xb_edges[xb]
         for t in range(bins_map[2]):
             dt = t_edges[t+1] - t_edges[t]
             for phi in range(bins_map[3]):
@@ -524,8 +538,28 @@ for q2 in range(bins_map[0]):
                 if num_events > 0:
                     q2b[0], xbb[0], tb[0], phib[0], count[0] = q2, xb, t, phi, num_events
                     tree_raw.Fill()
+                
+                x_low, x_high = Xb_edges[xb], Xb_edges[xb+1]
+                dx = (x_high - x_low) / float(N_rie)
+                # midpoints: avoid endpoints to be stable at singularities
+                x_midpoints = np.linspace(x_low + dx/2.0, x_high - dx/2.0, N_rie)
+                # evaluate physical Q2 bounds at the sampled x points
+                q2_phys_low = np.maximum(Q2_min, ((W_min**2 - PROTON_MASS**2) / (1.0/x_midpoints - 1.0)))   # physical lower bound at each x
+                q2_phys_high = Q2_left_slope * x_midpoints      # physical upper bound at each x
+                # compute overlap of the bin's [q2_low, q2_high] with physical [q2_phys_low, q2_phys_high]
+                q2_bin_low, q2_bin_high = Q2_edges[q2], Q2_edges[q2+1]
+                # elementwise overlap height: max(0, min(bin_high, phys_high) - max(bin_low, phys_low))
+                overlap_low = np.maximum(q2_bin_low, q2_phys_low)
+                overlap_high = np.minimum(q2_bin_high, q2_phys_high)
+                overlap_height = np.maximum(0.0, overlap_high - overlap_low)  # array of length N_rie
+                # approximate area in Q2-xB for this (q2,xb) bin by Riemann sum
+                area_Q2_xB = np.sum(overlap_height) * dx   # [GeV^2 * xB]
 
-                bin_volume = dq2 * dxb * dt * dphi
+                # RECTANGULAR BIN DEFAULT:
+                # dq2 = Q2_edges[q2+1] - Q2_edges[q2]
+                # dxb = Xb_edges[xb+1] - Xb_edges[xb]
+
+                bin_volume = area_Q2_xB * dt * dphi
                 bin_variance = 0
                 bin_yield = 0
 
@@ -598,12 +632,16 @@ for q2 in range(bins_map[0]):
                     surv_mask_all[surv_mask] = True
                 
                 side_sub_yield4D[q2, xb, t, phi] = bin_yield
-                errs4D[q2, xb, t, phi] = np.sqrt(bin_variance) / bin_volume / LUM_INT / BR
-                xsec4D[q2, xb, t, phi] = bin_yield / bin_volume / LUM_INT / BR
+                if bin_yield == 0:
+                    errs4D[q2, xb, t, phi] = 0
+                    xsec4D[q2, xb, t, phi] = 0
+                else:
+                    errs4D[q2, xb, t, phi] = np.sqrt(bin_variance) / bin_volume / LUM_INT / BR
+                    xsec4D[q2, xb, t, phi] = bin_yield / bin_volume / LUM_INT / BR
 
 if acceptance is not None:
-    xsec4D = np.divide(xsec4D, acceptance, out=np.zeros_like(xsec4D), where=acceptance>0)
-    errs4D = np.divide(errs4D, acceptance, out=np.zeros_like(errs4D), where=acceptance>0)
+    xsec4D /= acceptance
+    errs4D /= acceptance
 
 surviving_indices = np.flatnonzero(surv_mask_all)
 print(f"Total surviving events: {len(surviving_indices)}")
@@ -657,14 +695,59 @@ for var in ex_vars:
     hist_dict[var] = h
 
 # --- 2D coverage: Q2 vs xB ---
-h_Q2_Xb = ROOT.TH2D(
-    "h_Q2_Xb", "Q^{2} vs x_{B} Coverage; x_{B}; Q^{2} [GeV^{2}]; Events",
+# xB points for drawing
+xB_vals = np.linspace(min(Xb_edges), max(Xb_edges), 200)
+
+# Compute xB interval between left and right kinematic boundaries
+xB_min_lower = Q2_min / Q2_left_slope
+xB_max_lower = Q2_min / ( (W_min**2 - PROTON_MASS**2) + Q2_min )
+xB_lower = xB_vals[(xB_vals >= xB_min_lower) & (xB_vals <= xB_max_lower)]
+q2_lower_trimmed = np.full_like(xB_lower, Q2_min)
+xB_higher = xB_vals[xB_vals >= xB_max_lower]
+
+# --- Left boundary line ---
+q2_left = Q2_left_slope * xB_vals[xB_vals >= xB_min_lower]
+gr_left = ROOT.TGraph(len(xB_vals[xB_vals >= xB_min_lower]), xB_vals[xB_vals >= xB_min_lower], q2_left)
+gr_left.SetLineColor(ROOT.kMagenta)
+gr_left.SetLineWidth(2)
+
+# --- Lower horizontal line ---
+gr_lower = ROOT.TGraph(len(xB_lower), xB_lower, q2_lower_trimmed)
+gr_lower.SetLineColor(ROOT.kRed)
+gr_lower.SetLineWidth(2)
+
+# --- Right boundary curve ---
+q2_right = (W_min**2 - PROTON_MASS**2) / (1/xB_higher - 1)
+gr_right = ROOT.TGraph(len(xB_higher), xB_higher, q2_right)
+gr_right.SetLineColor(ROOT.kCyan)
+gr_right.SetLineWidth(2)
+
+h_Q2_Xb_binned = ROOT.TH2D(
+    "h_Q2_Xb_binned", "Q^{2} vs x_{B} Coverage; x_{B}; Q^{2} [GeV^{2}]; Events",
     len(Xb_edges)-1, Xb_edges,
     len(Q2_edges)-1, Q2_edges
 )
+h_Q2_Xb = ROOT.TH2D(
+    "h_Q2_Xb", "Q^{2} vs x_{B} Coverage; x_{B}; Q^{2} [GeV^{2}]; Events",
+    100, 0.05, 0.8,
+    100, 0.0, np.max(df_numpy["dis.Q2"][surviving_indices])
+)
 for q2, xb in zip(df_numpy["dis.Q2"][surviving_indices], df_numpy["dis.Xb"][surviving_indices]):
     h_Q2_Xb.Fill(xb, q2)
-h_Q2_Xb.Write()
+    h_Q2_Xb_binned.Fill(xb, q2)
+
+h_Q2_Xb_binned.SetFillColorAlpha(ROOT.kOrange, 0.4)  # 0.4 = 40% opaque
+h_Q2_Xb_binned.SetLineColor(ROOT.kOrange)  # optional outline
+h_Q2_Xb_binned.SetMarkerSize(0)  # no markers
+
+c = ROOT.TCanvas("Q2_vs_Xb", "Q2 vs xB Coverage", 400, 600)
+h_Q2_Xb.Draw("COLZ")   # Draw 2D histogram with color map
+h_Q2_Xb_binned.Draw("BOX SAME")
+gr_lower.Draw("L SAME")
+gr_left.Draw("L SAME")
+gr_right.Draw("L SAME")
+
+c.Write()
 
 tree_raw.AutoSave("FlushBaskets")
 out_file.Close()
@@ -672,7 +755,6 @@ print("Saved exclusive histograms to survival_summary.root")
 
 ### ----------------- Project 4D histogram to phi ----------------- ###
 out_file = ROOT.TFile("phi_xsec.root", "RECREATE")
-Ebeam = args.E
 
 phi_centers = 0.5 * (phi_edges[:-1] + phi_edges[1:])
 phi_widths = 0.5 * (phi_edges[1:] - phi_edges[:-1])
@@ -686,7 +768,7 @@ for q2 in range(bins_map[0]):
             phi_yields = xsec4D[q2, xb, t, :]
             phi_errors = errs4D[q2, xb, t, :]
 
-            if np.sum(phi_yields) == 0:
+            if np.nansum(phi_yields) == 0:
                 continue
 
             # surviving event mask for this 4D bin
@@ -713,7 +795,8 @@ for q2 in range(bins_map[0]):
                 print(f"Skipping bin Q2={q2}, Xb={xb}, t={t} due to zero variance in xsec_red")
                 continue
 
-            n_points = len(phi_centers)
+            valid_mask = ~np.isnan(xsec_red)
+
             gr_name = f"gr_phi_q{q2}_xb{xb}_t{t}"
             gr_title = (
                 f"<Q2>={Q2_center:.2f}, "
@@ -723,10 +806,10 @@ for q2 in range(bins_map[0]):
             )
 
             # --- TGraphAsymmErrors for scatter points with error bars ---
-            gr = ROOT.TGraphAsymmErrors(n_points)
-            for i in range(n_points):
-                gr.SetPoint(i, phi_centers[i], xsec_red[i])
-                gr.SetPointError(i, phi_widths[i], phi_widths[i], xsec_red_err[i], xsec_red_err[i])
+            gr = ROOT.TGraphAsymmErrors()
+            for i, idx in enumerate(np.where(valid_mask)[0]):
+                gr.SetPoint(i, phi_centers[idx], xsec_red[idx])
+                gr.SetPointError(i, phi_widths[idx], phi_widths[idx], xsec_red_err[idx], xsec_red_err[idx])
 
             # gr.SetMarkerStyle(20)  # solid circle
             # gr.SetMarkerSize(1.0)
@@ -771,5 +854,5 @@ if args.verbose:
     log_file.close()
     print("Verbose output saved to xsec_log.txt")
 
-print("Saved phi-projected reduced cross sections [nb/GeV^2] to phi_xsec.root")
+print("Saved phi-projected reduced cross sections [fb/GeV^2] to phi_xsec.root")
 

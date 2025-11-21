@@ -1,0 +1,13 @@
+{
+    "ebeam": 6.394,
+    "torus": 1,
+    "channel": "inclusiveMATCH",
+    "branches": {
+        "rec": ["vz", "xFT", "yFT", "xDC1", "yDC1", "xDC2", "yDC2", "xDC3", "yDC3",
+                "uPCAL", "vPCAL", "wPCAL", "uECIN", "vECIN", "wECIN", "uECOUT", "vECOUT", "wECOUT",
+                "E_PCAL", "E_ECIN", "E_ECOUT"]
+    },
+    "isMC": true,
+    "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
+    "tag": "RGK_NONFID"
+}

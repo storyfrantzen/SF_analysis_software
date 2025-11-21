@@ -408,7 +408,7 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
     auto photons   = c12.getByID(22);   // PID 22 = photon
 
     // Reject if not EPPI0 final state, according to eventbuilder:
-    if (photons.size() < 2 || electrons.size() != 1 || protons.size() != 1) return;
+    if (photons.size() < 2 || electrons.size() < 1 || protons.size() < 1) return;
 
     ev_.flush();
     e_.flush();
@@ -492,10 +492,10 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
                     if (det1 == 2 || det2 == 2) continue;
 
                     // Reject if photons are not detected in same sector (ANDREY):
-                    if (sec1 != sec2) continue;
+                    // if (sec1 != sec2) continue;
 
                     // Reject if photons are detected in same sector as electron (ANDREY):
-                    if (sec1 == secEle || sec2 == secEle) continue;
+                    // if (sec1 == secEle || sec2 == secEle) continue;
 
                     // Reject if either photon has momentum less than threshold (Bobby's thesis):
                     if (g1->getP() < 0.4  || g2->getP() < 0.4) continue;
@@ -518,7 +518,7 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
                     TLorentzVector lv_candidatePi0 = lv_g1 + lv_g2;
 
                     double deltaM = std::abs(lv_candidatePi0.M() - PI0_MASS);
-                    if (deltaM > 0.1) continue;
+                    //if (deltaM > 0.1) continue;
 
                     if (deltaM < leastDeltaM) {
                         detPi0         = det1; // Assign to pi0 the detector of the photon
@@ -585,16 +585,16 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
     eppi0_.fill(lv_ePrime, lv_pPrime, lv_g1, lv_g2, ebeam_);
 
     // LOOSE GLOBAL EXCLUSIVITY CUTS:
-    if (eppi0_.m2_miss > 1) return;
-    if (eppi0_.pT_miss > 0.2) return;
-    if (eppi0_.t > 2) return;
-    if (eppi0_.E_miss > 1.5) return;
-    if (eppi0_.pz_miss > 1) return; // might be overstepping E_miss cut
-    if (eppi0_.theta_e_g1 * 180.0/M_PI < 4 || eppi0_.theta_e_g2 * 180.0/M_PI < 4) return; // BOBBY
-    if (eppi0_.theta_g1_g2 * 180.0/M_PI < 1) return; // BOBBY
-    if (eppi0_.pi0_thetaX * 180.0/M_PI > 4) return; // used in CLAS6 analysis
-    if (eppi0_.m2_epX > 1) return;
-    if (eppi0_.m2_epi0X > 3) return;
+    // if (eppi0_.m2_miss > 1) return;  // only removes ~3 events? Not necessary
+    // if (eppi0_.pT_miss > 0.2) return;
+    // if (eppi0_.t > 2) return;
+    // if (eppi0_.E_miss > 1.5) return;
+    // if (eppi0_.pz_miss > 1) return; // might be overstepping E_miss cut
+    // if (eppi0_.theta_e_g1 * 180.0/M_PI < 4 || eppi0_.theta_e_g2 * 180.0/M_PI < 4) return; // BOBBY
+    // if (eppi0_.theta_g1_g2 * 180.0/M_PI < 1) return; // BOBBY
+    // if (eppi0_.pi0_thetaX * 180.0/M_PI > 4) return; // 2 deg used in CLAS6 analysis
+    // if (eppi0_.m2_epX > 1) return;
+    // if (eppi0_.m2_epi0X > 3) return;
 
     numFills_++;
     // FILL TREE, ONCE PER EVENT:

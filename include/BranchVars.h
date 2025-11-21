@@ -14,11 +14,14 @@ struct EventVars : public TObject {
     // ALWAYS FILLED: //
     int runNum, eventNum, helicity;
 
+    double charge;
+
     // FILLED IF REQUESTED: //
     int numElectrons, numProtons, numPhotons;
 
     void flush() {
         runNum = eventNum = helicity = numElectrons = numProtons = numPhotons = -9999;
+        charge = NAN;
     }
     void fill(const std::unordered_set<std::string>& enabledBranches, clas12::clas12reader& c12);
     ClassDef(EventVars, 1);
@@ -87,7 +90,19 @@ struct EPPI0Vars : public TObject {
         theta_e_g1 = theta_e_g2 = theta_g1_g2 = NAN;
         t = trentoPhi = NAN;
     }
+
     void fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_pPrime, 
               const TLorentzVector& lv_g1, const TLorentzVector& lv_g2, double ebeam, double m_target=PROTON_MASS);
+
+
+    private:
+    // Helper: compute Trento phi
+    // lv_beam, lv_target, lv_ePrime: lab-frame vectors
+    // lv_hadron: the hadron used to define the hadron plane (e.g., recoil proton or π0)
+    double computeTrentoPhi(const TLorentzVector& lv_beam,
+                            const TLorentzVector& lv_target,
+                            const TLorentzVector& lv_ePrime,
+                            const TLorentzVector& lv_hadron) const;
     ClassDef(EPPI0Vars, 1);
+
 };

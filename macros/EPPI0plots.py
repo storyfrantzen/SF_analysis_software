@@ -1,7 +1,6 @@
 #type: ignore
 import ROOT
 import argparse
-import sys
 
 def fit_histogram(hist, func_str, fit_range, init_params=None, outFile=None, draw_minus3sigma=True, draw_plus3sigma=True):
     """
@@ -65,7 +64,6 @@ def fit_histogram(hist, func_str, fit_range, init_params=None, outFile=None, dra
 
     return f
 
-
 # ─── Specialized Fits ─────────────────────
 def fit_mgg(hist, outFile=None):
     return fit_histogram(hist, "gaus(0)+pol1(3)", (0.098, 0.17),
@@ -103,11 +101,16 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
     if not tree:
         print("Could not find tree 'Events' in file.")
         return
+    
+    isGEMC = False
+    if tree.GetBranch("gen_dis") and tree.GetBranch("gen_eppi0"):
+        isGEMC = True
 
     # ─── Histograms ─────────────────────────────
     histos1D = {
         "h_helicity": ROOT.TH1I("h_helicity", "Helicity; Counts", 10, -5, 5),
-        "h_mgg": ROOT.TH1D("h_mgg", "M_{#gamma#gamma}; M_{#gamma#gamma} [GeV]; Counts", 200, 0.098, 0.17),
+        # "h_mgg": ROOT.TH1D("h_mgg", "M_{#gamma#gamma}; M_{#gamma#gamma} [GeV]; Counts", 200, 0.098, 0.17),
+        "h_mgg": ROOT.TH1D("h_mgg", "M_{#gamma#gamma}; M_{#gamma#gamma} [GeV]; Counts", 200, 0.0, 0.3),
         "h_mgg_pFD": ROOT.TH1D("h_mgg_pFD", "pFD M_{#gamma#gamma}; M_{#gamma#gamma} [GeV]; Counts", 200, 0.098, 0.17),
         "h_mgg_pCD": ROOT.TH1D("h_mgg_pCD", "pCD M_{#gamma#gamma}; M_{#gamma#gamma} [GeV]; Counts", 200, 0.098, 0.17),
         "h_Xb": ROOT.TH1D("h_Xb", "x_{B}; x_{B}; Counts", 250, 0, 0.8),
@@ -121,7 +124,8 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
         "h_m2_miss": ROOT.TH1D("h_m2_miss", "M_{X}^{2}; M_{X}^{2} [GeV^{2}]; Counts", 200, -0.2, 0.2),
         "h_m2_miss_pFD": ROOT.TH1D("h_m2_miss_pFD", "pFD M_{X}^{2}; M_{X}^{2} [GeV^{2}]; Counts", 200, -0.2, 0.2),
         "h_m2_miss_pCD": ROOT.TH1D("h_m2_miss_pCD", "pCD M_{X}^{2}; M_{X}^{2} [GeV^{2}]; Counts", 200, -0.2, 0.2),
-        "h_m2_epX": ROOT.TH1D("h_m2_epX", "M_{epX}^{2}; M_{epX}^{2} [GeV^{2}]; Counts", 200, -0.6, 1),
+        # "h_m2_epX": ROOT.TH1D("h_m2_epX", "M_{epX}^{2}; M_{epX}^{2} [GeV^{2}]; Counts", 200, -0.6, 1),
+        "h_m2_epX": ROOT.TH1D("h_m2_epX", "M_{epX}^{2}; M_{epX}^{2} [GeV^{2}]; Counts", 200, -1, 1),
         "h_m2_epX_pFD": ROOT.TH1D("h_m2_epX_pFD", "pFD M_{epX}^{2}; M_{epX}^{2} [GeV^{2}]; Counts", 200, -0.6, 1),
         "h_m2_epX_pCD": ROOT.TH1D("h_m2_epX_pCD", "pCD M_{epX}^{2}; M_{epX}^{2} [GeV^{2}]; Counts", 200, -0.6, 1),
         "h_m2_epi0X": ROOT.TH1D("h_m2_epi0X", "M_{e#piX}^{2}; M_{e#piX}^{2} [GeV^{2}]; Counts", 200, -0.5, 3.5),
@@ -132,8 +136,10 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
         "h_m_eggX_pCD": ROOT.TH1D("h_m_eggX_pCD", "pCD M_{e#gamma #gamma X}; M_{e#gamma #gamma X} [GeV]; Counts", 200, 0, 2),
         "h_px_miss": ROOT.TH1D("h_px_miss", "Missing Momentum #Delta P_{x}; #Delta P_{x} [GeV]; Counts", 200, -0.8, 0.8),
         "h_py_miss": ROOT.TH1D("h_py_miss", "Missing Momentum #Delta P_{y}; #Delta P_{y} [GeV]; Counts", 200, -0.8, 0.8),
-        "h_pz_miss": ROOT.TH1D("h_pz_miss", "Missing Momentum #Delta P_{z}; #Delta P_{z} [GeV]; Counts", 200, -0.8, 1),
-        "h_E_miss": ROOT.TH1D("h_E_miss", "E_{miss}; E_{miss} [GeV]; Counts", 200, -0.8, 1.5),
+        # "h_pz_miss": ROOT.TH1D("h_pz_miss", "Missing Momentum #Delta P_{z}; #Delta P_{z} [GeV]; Counts", 200, -0.8, 1),
+        "h_pz_miss": ROOT.TH1D("h_pz_miss", "Missing Momentum #Delta P_{z}; #Delta P_{z} [GeV]; Counts", 200, -1, 3),
+        # "h_E_miss": ROOT.TH1D("h_E_miss", "E_{miss}; E_{miss} [GeV]; Counts", 200, -0.8, 1.5),
+        "h_E_miss": ROOT.TH1D("h_E_miss", "E_{miss}; E_{miss} [GeV]; Counts", 200, -1, 3),
         "h_E_miss_pFD": ROOT.TH1D("h_E_miss_pFD", "pFD E_{miss}; E_{miss} [GeV]; Counts", 200, -0.8, 1.5),
         "h_E_miss_pCD": ROOT.TH1D("h_E_miss_pCD", "pCD E_{miss}; E_{miss} [GeV]; Counts", 200, -0.8, 1.5),
         "h_deltaPhi": ROOT.TH1D("h_deltaPhi", "#Delta #Phi; #Delta #Phi [deg]; Counts", 200, -10, 10),
@@ -163,6 +169,28 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
         "h_m2_miss_vs_E_miss": ROOT.TH2D("h_m2_miss_vs_E_miss", "M_{X}^{2} vs E_{miss}; E_{miss} [GeV]; M_{X}^{2} [GeV^{2}]", 100, -0.5, 0.5, 200, -1, 1)
     }
 
+    histosGen1D = {}
+    histosGen2D = {}
+
+    if isGEMC:
+        histosGen1D = {
+            "h_gen_mgg": ROOT.TH1D("h_gen_mgg", "Generator M_{#gamma#gamma}; M_{#gamma#gamma} [GeV]; Counts", 200, 0.0, 0.3),
+            "h_gen_Xb": ROOT.TH1D("h_gen_Xb", "Generator x_B; x_B; Counts", 250, 0, 0.8),
+            "h_gen_Q2": ROOT.TH1D("h_gen_Q2", "Generator Q^2; Q^2 [GeV^2]; Counts", 250, 0, 10),
+            "h_gen_W": ROOT.TH1D("h_gen_W", "Generator W; W [GeV]; Counts", 100, 2, 3.5),
+            "h_gen_t": ROOT.TH1D("h_gen_t", "Generator -t; -t [GeV^2]; Counts", 100, 0, 4),
+            "h_gen_phiT": ROOT.TH1D("h_gen_phiT", "Generator #Phi_{T}; #Phi_{T} [deg]; Counts", 180, 0, 360),
+            "h_gen_theta_e_g1": ROOT.TH1D("h_gen_theta_e_g1", "Generator #theta_{e#gamma_{1}}; #theta [deg]; Counts", 90, 0, 90),
+            "h__gentheta_e_g2": ROOT.TH1D("h_gen_theta_e_g2", "Generator #theta_{e#gamma_{2}}; #theta [deg]; Counts", 90, 0, 90),
+            "h__gentheta_g1_g2": ROOT.TH1D("h_gen_theta_g1_g2", "Generator #theta_{#gamma_{1}#gamma_{2}}; #theta [deg]; Counts", 90, 0, 90)
+        }
+
+        histosGen2D = {
+            "h_gen_Q2_vs_Xb": ROOT.TH2D("h_gen_Q2_vs_Xb", "Generator Q^2 vs x_B; x_B; Q^2 [GeV^2]", 50, 0, 0.7, 50, 0.5, 7),
+            "h_gen_t_vs_phiT": ROOT.TH2D("h_gen_t_vs_phiT", "Generator -t vs. #Phi_{T}; #Phi_{T} [deg]; -t [GeV^{2}]", 180, 0, 360, 50, 0, 2)
+        }
+
+
     # ─── Fill histograms ─────────────────────────
     # Example: adjust selection cuts as needed (from original macro)
     tree.Draw("event.helicity >> h_helicity")
@@ -172,7 +200,7 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
     tree.Draw("dis.Xb >> h_Xb")
     tree.Draw("dis.Q2 >> h_Q2")
     tree.Draw("dis.W >> h_W")
-    tree.Draw("t >> h_t")
+    tree.Draw("eppi0.t >> h_t")
     tree.Draw("fmod((eppi0.trentoPhi * 180.0 / TMath::Pi()) + 360.0, 360.0) >> h_phiT")
     tree.Draw("eppi0.theta_e_g1 * 180.0/TMath::Pi() >> h_theta_e_g1")
     tree.Draw("eppi0.theta_e_g2 * 180.0/TMath::Pi() >> h_theta_e_g2")
@@ -219,6 +247,21 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
     tree.Draw("eppi0.m2_miss : eppi0.pz_miss >> h_m2_miss_vs_pz_miss", "", "COLZ")
     tree.Draw("eppi0.m2_miss : eppi0.E_miss >> h_m2_miss_vs_E_miss", "", "COLZ")
 
+
+    if isGEMC:
+        tree.Draw("gen_eppi0.m_gg >> h_gen_mgg")
+        tree.Draw("gen_dis.Xb >> h_gen_Xb")
+        tree.Draw("gen_dis.Q2 >> h_gen_Q2")
+        tree.Draw("gen_dis.W >> h_gen_W")
+        tree.Draw("gen_eppi0.t >> h_gen_t")
+        tree.Draw("fmod((gen_eppi0.trentoPhi * 180.0 / TMath::Pi()) + 360.0, 360.0) >> h_gen_phiT")
+        tree.Draw("gen_eppi0.theta_e_g1 * 180.0/TMath::Pi() >> h_gen_theta_e_g1")
+        tree.Draw("gen_eppi0.theta_e_g2 * 180.0/TMath::Pi() >> h_gen_theta_e_g2")
+        tree.Draw("gen_eppi0.theta_g1_g2 * 180.0/TMath::Pi() >> h_gen_theta_g1_g2")
+        tree.Draw("gen_dis.Q2 : gen_dis.Xb >> h_gen_Q2_vs_Xb")
+        tree.Draw("gen_eppi0.t : fmod((gen_eppi0.trentoPhi * 180.0 / TMath::Pi()) + 360.0, 360.0) >> h_gen_t_vs_phiT")
+
+
     outFile = ROOT.TFile.Open(outFilePath, "RECREATE")
 
 
@@ -226,39 +269,39 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
     fits = {}
 
     # Mgg
-    fits["mgg"]        = fit_mgg(histos1D["h_mgg"], outFile=outFile)
-    fits["mgg_pFD"]    = fit_mgg(histos1D["h_mgg_pFD"], outFile=outFile)
-    fits["mgg_pCD"]    = fit_mgg(histos1D["h_mgg_pCD"], outFile=outFile)
+    # fits["mgg"]        = fit_mgg(histos1D["h_mgg"], outFile=outFile)
+    # fits["mgg_pFD"]    = fit_mgg(histos1D["h_mgg_pFD"], outFile=outFile)
+    # fits["mgg_pCD"]    = fit_mgg(histos1D["h_mgg_pCD"], outFile=outFile)
 
-    # MM²
-    fits["m2_miss"]     = fit_m2_miss(histos1D["h_m2_miss"], outFile=outFile)
-    fits["m2_miss"]     = fit_m2_miss(histos1D["h_m2_miss_pFD"], outFile=outFile)
-    fits["m2_miss"]     = fit_m2_miss(histos1D["h_m2_miss_pCD"], outFile=outFile)
+    # # MM²
+    # fits["m2_miss"]     = fit_m2_miss(histos1D["h_m2_miss"], outFile=outFile)
+    # fits["m2_miss"]     = fit_m2_miss(histos1D["h_m2_miss_pFD"], outFile=outFile)
+    # fits["m2_miss"]     = fit_m2_miss(histos1D["h_m2_miss_pCD"], outFile=outFile)
 
-    # MM²(epX)
-    fits["m2_epX"]     = fit_m2_epX(histos1D["h_m2_epX"], outFile=outFile)
-    fits["m2_epX_pFD"] = fit_m2_epX(histos1D["h_m2_epX_pFD"], outFile=outFile)
-    fits["m2_epX_pCD"] = fit_m2_epX(histos1D["h_m2_epX_pCD"], outFile=outFile)
+    # # MM²(epX)
+    # fits["m2_epX"]     = fit_m2_epX(histos1D["h_m2_epX"], outFile=outFile)
+    # fits["m2_epX_pFD"] = fit_m2_epX(histos1D["h_m2_epX_pFD"], outFile=outFile)
+    # fits["m2_epX_pCD"] = fit_m2_epX(histos1D["h_m2_epX_pCD"], outFile=outFile)
 
-    # MM²(epi0X)
-    fits["m2_epi0X"]     = fit_m2_epi0X(histos1D["h_m2_epi0X"], outFile=outFile)
-    fits["m2_epi0X_pFD"] = fit_m2_epi0X(histos1D["h_m2_epi0X_pFD"], outFile=outFile)
-    fits["m2_epi0X_pCD"] = fit_m2_epi0X(histos1D["h_m2_epi0X_pCD"], outFile=outFile)
+    # # MM²(epi0X)
+    # fits["m2_epi0X"]     = fit_m2_epi0X(histos1D["h_m2_epi0X"], outFile=outFile)
+    # fits["m2_epi0X_pFD"] = fit_m2_epi0X(histos1D["h_m2_epi0X_pFD"], outFile=outFile)
+    # fits["m2_epi0X_pCD"] = fit_m2_epi0X(histos1D["h_m2_epi0X_pCD"], outFile=outFile)
     
-    # M(eγγX)
-    fits["m_eggX"]     = fit_m_eggX(histos1D["h_m_eggX"], outFile=outFile)
-    fits["m_eggX_pFD"] = fit_m_eggX(histos1D["h_m_eggX_pFD"], outFile=outFile)
-    fits["m_eggX_pCD"] = fit_m_eggX(histos1D["h_m_eggX_pCD"], outFile=outFile)
+    # # M(eγγX)
+    # fits["m_eggX"]     = fit_m_eggX(histos1D["h_m_eggX"], outFile=outFile)
+    # fits["m_eggX_pFD"] = fit_m_eggX(histos1D["h_m_eggX_pFD"], outFile=outFile)
+    # fits["m_eggX_pCD"] = fit_m_eggX(histos1D["h_m_eggX_pCD"], outFile=outFile)
 
-    # Emiss
-    fits["E_miss"]      = fit_E_miss(histos1D["h_E_miss"], outFile=outFile)
-    fits["E_miss_pFD"]  = fit_E_miss(histos1D["h_E_miss_pFD"], outFile=outFile)
-    fits["E_miss_pCD"]  = fit_E_miss(histos1D["h_E_miss_pCD"], outFile=outFile)
+    # # Emiss
+    # fits["E_miss"]      = fit_E_miss(histos1D["h_E_miss"], outFile=outFile)
+    # fits["E_miss_pFD"]  = fit_E_miss(histos1D["h_E_miss_pFD"], outFile=outFile)
+    # fits["E_miss_pCD"]  = fit_E_miss(histos1D["h_E_miss_pCD"], outFile=outFile)
 
-    # thetaX
-    fits["thetaX"]      = fit_thetaX(histos1D["h_thetaX"], outFile=outFile)
-    fits["thetaX_pFD"]  = fit_thetaX(histos1D["h_thetaX_pFD"], outFile=outFile)
-    fits["thetaX_pCD"]  = fit_thetaX(histos1D["h_thetaX_pCD"], outFile=outFile)
+    # # thetaX
+    # fits["thetaX"]      = fit_thetaX(histos1D["h_thetaX"], outFile=outFile)
+    # fits["thetaX_pFD"]  = fit_thetaX(histos1D["h_thetaX_pFD"], outFile=outFile)
+    # fits["thetaX_pCD"]  = fit_thetaX(histos1D["h_thetaX_pCD"], outFile=outFile)
 
     # ─── Save histograms & canvases ─────────────
 
@@ -268,6 +311,13 @@ def EPPI0plots(inputFilePath="input.root", outFilePath="EPPI0plots.root"):
 
     for h in histos2D.values(): 
         if h is not None:
+            h.Write()
+
+    # Save generator histograms if GEMC
+    if isGEMC:
+        for h in histosGen1D.values():
+            h.Write()
+        for h in histosGen2D.values():
             h.Write()
 
     outFile.Close()

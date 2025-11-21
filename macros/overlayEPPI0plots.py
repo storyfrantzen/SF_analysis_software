@@ -74,6 +74,12 @@ for name in hist_names:
                     abs(hData.GetXaxis().GetXmax() - hGEMC.GetXaxis().GetXmax()) < 1e-12)
     if not same_binning:
         hGEMC = resample_hist_to_template(hGEMC, hData, hGEMC.GetName() + "_resampled")
+    
+    # Normalize GEMC to match total data yield
+    integralData = hData.Integral()
+    integralGEMC = hGEMC.Integral()
+    if integralGEMC > 0:
+        hGEMC.Scale(integralData / integralGEMC)
 
     # Keep functions alive
     all_funcs_to_keep.extend(funcsData)
