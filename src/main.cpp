@@ -137,11 +137,10 @@ int main(int argc, char** argv) {
         int event = c12->runconfig()->getEvent(); // same for `event`
 
         bool passQA = true;
-        if (!config.value("isMC", false) && !config.value("qa", std::vector<std::string>{}).empty()) {
+        if (run != 11) {
             passQA = qa.Pass(run, event);
             if (passQA) qa.AccumulateCharge();
         }
-
         if (!passQA) continue;
 
         PM.processEvent(*c12);

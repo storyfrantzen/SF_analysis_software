@@ -4,7 +4,6 @@ import argparse
 import ROOT
 import numpy as np
 import math
-from scipy.optimize import curve_fit
 
 ROOT.gSystem.Load("/work/clas12/storyf/SF_analysis_software/build/install/lib/libBranchVarsDict.so")
 
@@ -15,6 +14,7 @@ RHO_LH2 = 0.071 # g / cm3
 N_A = 6.02214e23
 ALPHA_EM = 1/137.035999084
 PROTON_MASS = 0.9382720813  # proton mass [GeV]
+BR = 0.988 # branching ratio for pi0 --> 2g
 PI = math.pi
 
 # physics-motivated fit windows:
@@ -28,36 +28,10 @@ DEFAULT_FITS = {
 }
 
 ### ----------------- Helper Functions ----------------- ###
-def is_valid_rec(df_numpy):
-    mask = np.ones(len(df_numpy["dis.Q2"]), dtype=bool)
-    for k, arr in df_numpy.items():
-        if k.startswith("eppi0.") or k.startswith("dis."):
-            if arr.dtype.kind in ("i", "u"):  # integers
-                mask &= (arr != -999)
-            else:  # floats
-                mask &= ~np.isnan(arr)
-    return mask
-
-def coerce_scalar_column(arr):
-    out = []
-    for ev in arr:
-        if ev is None:
-            out.append(np.nan)
-        elif isinstance(ev, (bytes, str, np.bytes_)):
-            try: out.append(float(ev))
-            except: out.append(np.nan)
-        elif hasattr(ev, "__len__") and not isinstance(ev, (float,int)):
-            try: out.append(float(ev[0]) if len(ev) > 0 else np.nan)
-            except: out.append(np.nan)
-        else:
-            try: out.append(float(ev))
-            except: out.append(np.nan)
-    return np.array(out, dtype=float)
-
-def get_adaptive_edges(tree, varname, n_bins, min_val, max_val, fine_bins=1000):
-    hist_name = f"h_{varname}"
+def get_adaptive_edges(tree, var_name, n_bins, min_val, max_val, fine_bins=1000):
+    hist_name = f"h_{var_name}"
     hist = ROOT.TH1D(hist_name, hist_name, fine_bins, min_val, max_val)
-    tree.Draw(f"{varname} >> {hist_name}", "", "goff")
+    tree.Draw(f"{var_name} >> {hist_name}", "", "goff")
     total_entries = hist.GetEntries()
     if total_entries == 0:
         hist.Delete()
@@ -85,7 +59,43 @@ def get_bin_indices(values, edges):
     indices[~valid] = -1
     return indices
 
-def fit_exclusive(vals, name=None, fit_func=None, fit_range=None, p0=None, nbins=None, fallback=False):
+def coerce_scalar_column(arr):
+    out = []
+    for ev in arr:
+        if ev is None:
+            out.append(np.nan)
+        elif isinstance(ev, (bytes, str, np.bytes_)):
+            try: out.append(float(ev))
+            except: out.append(np.nan)
+        elif hasattr(ev, "__len__") and not isinstance(ev, (float,int)):
+            try: out.append(float(ev[0]) if len(ev) > 0 else np.nan)
+            except: out.append(np.nan)
+        else:
+            try: out.append(float(ev))
+            except: out.append(np.nan)
+    return np.array(out, dtype=float)
+
+def load_np_from_file(file, cols):
+    """Load ROOT file into numpy dict."""
+    f = ROOT.TFile(file, "READ")
+    tree = f.Get("Events")
+    df = ROOT.RDataFrame(tree)
+    df_np = df.AsNumpy(columns=cols)
+    for k in cols:
+        df_np[k] = coerce_scalar_column(df_np[k])
+    return df_np
+
+def no_sentinels_mask(df_np):
+    mask = np.ones(len(df_np["dis.Q2"]), dtype=bool)
+    for k, arr in df_np.items():
+        if k.startswith("eppi0.") or k.startswith("dis."):
+            if arr.dtype.kind in ("i", "u"):  # integers
+                mask &= (arr != -9999)
+            else:  # floats
+                mask &= ~np.isnan(arr)
+    return mask
+
+def fit_exclusive(vals, var_name=None, fit_func=None, fit_range=None, p0=None, nbins=None, fallback=False, min_entries=10):
     """
     Fit a 1D distribution and return the mean and sigma.
     
@@ -93,7 +103,7 @@ def fit_exclusive(vals, name=None, fit_func=None, fit_range=None, p0=None, nbins
     ----------
     vals : array-like
         Data points to fit.
-    name : str
+    var_name : str
         Optional name to look up defaults from DEFAULT_FITS.
     fit_func : ROOT.TF1, optional
         Fit function (overrides DEFAULT_FITS if provided).
@@ -111,127 +121,225 @@ def fit_exclusive(vals, name=None, fit_func=None, fit_range=None, p0=None, nbins
     mu, sigma : float
         Fitted mean and sigma.
     """
-    vals = np.asarray(vals, dtype=float)
+    vals = np.asarray(vals, float)
     vals = vals[~np.isnan(vals)]
     n = len(vals)
     if n == 0:
+        print("Fit error: no data found!")
         return np.nan, np.nan
 
     if nbins is None:
         nbins = max(30, min(200, int(max(10, n // 2))))
-    if n < 10:
-        # print("Fewer than 10 events, can't fit here...")
+        print(f"Defaulting to {nbins} for {var_name}.")
+    if n < min_entries:
+        print(f"Fit error: fewer than {min_entries} events, cannot perform fit!")
         if fallback:
             mu, sigma = np.mean(vals), np.std(vals, ddof=1) if n > 1 else np.nan
             return mu, sigma
         return np.nan, np.nan
 
-    # Histogram
-    hist_name = f"h_fit_{np.random.randint(1_000_000_000)}"
-    hist = ROOT.TH1D(hist_name, hist_name, nbins, np.min(vals), np.max(vals))
-    for v in vals: hist.Fill(float(v))
+    # Configure histograms for fitting:
 
-    data_min, data_max = np.min(vals), np.max(vals)
+    min_data, max_data = float(np.min(vals)), float(np.max(vals))
+
+    hist_name = f"hfit_{np.random.randint(1e9)}"
+    hist = ROOT.TH1D(hist_name, hist_name, nbins, min_data, max_data)
+    for v in vals: 
+        hist.Fill(v)
 
     # Determine default fit settings from dict
-    default_fit = DEFAULT_FITS.get(name, {})
-    func_str = fit_func or default_fit.get("fit_func", "gaus(0)+pol1(3)")
-    fit_range_default  = fit_range or default_fit.get("range", (data_min, data_max))
-    p0_default = default_fit.get("p0", None)
+    default_info = DEFAULT_FITS.get(var_name, {})
 
-    # Adjust fit range to actual data
-    if fit_range is None:
-        fit_min = max(fit_range_default[0], data_min)
-        fit_max = min(fit_range_default[1], data_max)
-        if fit_min >= fit_max:
-            # fallback if no overlap
-            if fallback:
-                return np.mean(vals), np.std(vals, ddof=1)
-            return np.nan, np.nan
-        fit_range = (fit_min, fit_max)
+    # Set fit range
+    fit_range_tuple  = fit_range or default_info.get("range", (min_data, max_data))
 
-    # Create ROOT TF1
-    f = fit_func.Clone() if fit_func else ROOT.TF1(f"f_fit_{hist_name}", func_str, *fit_range)
+    if fit_range_tuple[0] < min_data:
+        print("Fit range warning: setting min_fit to min_data.")
+    if fit_range_tuple[1] > max_data:
+        print("Fit range warning: setting max_fit to max_data.")
+    min_fit = max(fit_range_tuple[0], min_data)
+    max_fit = min(fit_range_tuple[1], max_data)
+    if min_fit >= max_fit:
+        print("Fit range error: fit range collapsed!")
+        if fallback:
+            return np.mean(vals), np.std(vals, ddof=1)
+        return np.nan, np.nan
+    fit_range_tuple = (min_fit, max_fit)
+
+    # Set fit function string / TF1 object
+    if fit_func is None:
+        func_str = default_info.get("fit_func", "gaus(0)+pol1(3)")
+        tf1_obj = None
+    else:
+        if isinstance(fit_func, ROOT.TF1):
+            func_str = fit_func.GetTitle()
+            tf1_obj = fit_func
+        else:  # treat as formula string
+            func_str = fit_func
+            tf1_obj = None
+
+    if tf1_obj:
+        f = tf1_obj.Clone(f"f_{hist_name}")
+        f.SetRange(min_fit, max_fit)
+    else:
+        f = ROOT.TF1(f"f_{hist_name}", func_str, min_fit, max_fit)
 
     # Set initial parameters
-    if p0 is None:
-        if p0_default is not None:
-            p0 = p0_default
-        else:
-            amp   = hist.GetMaximum()
-            peak  = hist.GetBinCenter(hist.GetMaximumBin())
-            width = hist.GetStdDev() if hist.GetStdDev() > 0 else 0.05
-            if "crystalball" in func_str.lower():
-                # amp, μ, σ, alpha (-1 * where the tail begins), n (tail power)
-                p0 = (amp, peak, width, -1.5, 4)
-            else:  # gaussian+pol1 default
-                p0 = (amp, peak, width, 0, 0)
+    p0_tuple = p0 or default_info.get("p0", None)
 
-    for i, val in enumerate(p0):
+    if p0_tuple is None:
+        amp   = hist.GetMaximum()
+        peak  = hist.GetBinCenter(hist.GetMaximumBin())
+        width = hist.GetStdDev() if hist.GetStdDev() > 0 else 0.05
+        if "crystalball" in func_str.lower():
+            # amp, μ, σ, alpha (-1 * where the tail begins), n (tail power)
+            p0_tuple = (amp, peak, width, -1.5, 4)
+        else: 
+            # gaussian + poly2/1 etc.
+            # (amp, mu, sigma, <poly params...>)
+            if "pol1" in func_str:
+                p0_tuple = (amp, peak, width, 0.0, 0.0)
+            elif "pol2" in func_str:
+                p0_tuple = (amp, peak, width, 0.0, 0.0, 0.0)
+            else:
+                p0_tuple = (amp, peak, width)
+
+    for i, val in enumerate(p0_tuple):
         f.SetParameter(i, val)
 
-    # Perform fit quietly
-    hist.Fit(f, "RQ0")
+    # Perform fit and extract results
+    status = hist.Fit(f, "RQ0")
+    fit_failed = (status != 0)
 
-    # Extract mu and sigma based on function type
-    try:
-        title = f.GetTitle().lower()
-        if "crystalball" in title:
-            mu, sigma = f.GetParameter(1), abs(f.GetParameter(2))
-        else:  # gaussian-style
-            mu, sigma = f.GetParameter(1), abs(f.GetParameter(2))
-    except Exception:
+    if fit_failed:
         if fallback:
-            mu, sigma = np.mean(vals), np.std(vals, ddof=1)
+            mu = np.mean(vals)
+            sigma = np.std(vals, ddof=1)
         else:
-            mu, sigma = np.nan, np.nan
+            "Fit error: fit failed! Returning np.nan for mu, sigma."
+            mu = sigma = np.nan
+    else:
+        try:
+            mu = f.GetParameter(1)
+            sigma = abs(f.GetParameter(2))
+        except Exception:
+            if fallback:
+                mu = np.mean(vals)
+                sigma = np.std(vals, ddof=1)
+            else:
+                mu = sigma = np.nan
 
-    hist.Delete()
+    # cleanup
+    del hist
     return mu, sigma
 
-def load_gemc(gemc_file, cols):
-    """Load GEMC ROOT file into numpy dict."""
-    f_gemc = ROOT.TFile(gemc_file, "READ")
-    tree = f_gemc.Get("Events")
-    df_gemc = ROOT.RDataFrame(tree)
+def compute_global_cuts(df_np, in_range_mask, pIdx, exclusive_vars, n_sigma_signal=3, apply_sideband=False, verbose=False, label="DATA"):
+    """
+    Compute global exclusivity cuts (and optional m_gg sideband cuts)
+    for either DATA or GEMC.
 
-    df_numpy = df_gemc.AsNumpy(columns=cols)
-    for k in cols:
-        df_numpy[k] = coerce_scalar_column(df_numpy[k])
-    return df_numpy
+    Returns:
+        global_cut_params: dict mapping (var, pIdx) -> (mu, sigma)
+        global_exclusivity_mask: boolean mask of events surviving ALL cuts
+    """
 
-def compute_acceptance(df_numpy_gemc, Q2_edges, Xb_edges, t_edges, phi_edges, shape, valid_mask=None, min_acceptance=0.005):
+    N = len(df_np["dis.Q2"])
+    global_exclusivity_mask = np.zeros(N, dtype=bool)
+    global_cut_params = {}
+
+    print(f">>> Deriving global exclusivity cuts for {label}...")
+
+    for p in range(2):  # pIdx = 0 (FD), 1 (CD)
+        mask = (in_range_mask) & (pIdx == p)
+
+        for var in exclusive_vars:
+            vals = df_np[f"eppi0.{var}"][mask]
+
+            if len(vals) == 0:
+                continue
+
+            # Fit exclusivity variable globally
+            mu, sigma = fit_exclusive(vals, var_name=var)
+            global_cut_params[(var, p)] = (mu, sigma)
+
+            # Apply the cut
+            mask[mask] &= np.abs(vals - mu) <= n_sigma_signal * sigma
+            global_exclusivity_mask |= mask
+
+            if verbose:
+                print(f"{label}: Global {var}, pIdx={p}: "
+                      f"mu={mu:.5f}, sigma={sigma:.5f}, survived={np.sum(mask)}")
+
+        # Optional m_gg global sideband fits
+        if apply_sideband:
+            vals = df_np["eppi0.m_gg"][mask]
+            if len(vals) > 0:
+                mu, sigma = fit_exclusive(vals, var_name="m_gg", nbins=200)
+                global_cut_params[("m_gg", p)] = (mu, sigma)
+                if verbose:
+                    print(f"{label}: Global m_gg, pIdx={p}: mu={mu:.5f}, sigma={sigma:.5f}")
+
+    return global_cut_params, global_exclusivity_mask
+
+def compute_acceptance(df_np_gemc, bin_edges, shape, valid_mask=None, min_acc=0.005, cfg={}):
     """Return acceptance[Q2, Xb, t, phi] from GEMC numpy arrays."""
+
+    # --- unpack required bin edges ---
+    Q2_edges, Xb_edges, t_edges, phi_edges = bin_edges
+
+    # --- unpack optional config ---
+    use_global_cuts = cfg.get("use_global_cuts", False)
+    apply_sideband  = cfg.get("apply_sideband", False)
+    verbose         = cfg.get("verbose", False)
+    n_sigma_signal  = cfg.get("n_sigma_signal", 3)
+    exclusive_vars  = cfg.get("exclusive_vars", [])
+
+    # output arrays
     gen_counts = np.zeros(shape, dtype=float)
     rec_counts = np.zeros(shape, dtype=float)
 
     # indices for generated
-    iQ2_gen  = get_bin_indices(df_numpy_gemc["gen_dis.Q2"], Q2_edges)
-    iXb_gen  = get_bin_indices(df_numpy_gemc["gen_dis.Xb"], Xb_edges)
-    it_gen   = get_bin_indices(df_numpy_gemc["gen_eppi0.t"],  t_edges)
-    iphi_gen = get_bin_indices((df_numpy_gemc["gen_eppi0.trentoPhi"]+2*np.pi)%(2*np.pi)*180/np.pi, phi_edges)
-
+    iQ2_gen  = get_bin_indices(df_np_gemc["gen_dis.Q2"], Q2_edges)
+    iXb_gen  = get_bin_indices(df_np_gemc["gen_dis.Xb"], Xb_edges)
+    it_gen   = get_bin_indices(df_np_gemc["gen_eppi0.t"],  t_edges)
+    iphi_gen = get_bin_indices((df_np_gemc["gen_eppi0.trentoPhi"]+2*np.pi)%(2*np.pi)*180/np.pi, phi_edges)
+    valid_gen = (iQ2_gen>=0)&(iXb_gen>=0)&(it_gen>=0)&(iphi_gen>=0)
+    print(f"Total GEN gemc events in kinematic binning range: {np.sum(valid_gen)}")
+    
     # indices for reconstructed
-    iQ2_rec  = get_bin_indices(df_numpy_gemc["dis.Q2"], Q2_edges)
-    iXb_rec  = get_bin_indices(df_numpy_gemc["dis.Xb"], Xb_edges)
-    it_rec   = get_bin_indices(df_numpy_gemc["eppi0.t"],  t_edges)
-    iphi_rec = get_bin_indices((df_numpy_gemc["eppi0.trentoPhi"]+2*np.pi)%(2*np.pi)*180/np.pi, phi_edges)
+    iQ2_rec  = get_bin_indices(df_np_gemc["dis.Q2"], Q2_edges)
+    iXb_rec  = get_bin_indices(df_np_gemc["dis.Xb"], Xb_edges)
+    it_rec   = get_bin_indices(df_np_gemc["eppi0.t"],  t_edges)
+    iphi_rec = get_bin_indices((df_np_gemc["eppi0.trentoPhi"]+2*np.pi)%(2*np.pi)*180/np.pi, phi_edges)
+    valid_rec = (iQ2_rec>=0) & (iXb_rec>=0) & (it_rec>=0) & (iphi_rec>=0)
+    print(f"Total REC gemc events in kinematic binning range: {np.sum(valid_rec)}")
+    if valid_mask is not None:
+        valid_rec &= valid_mask
+    pIdx_rec = np.where(np.isclose(df_np_gemc["p.det"], 1.0), 0, 1) # logic might need to be checked...
 
-    n_events = len(df_numpy_gemc["gen_dis.Q2"])
-    for i in range(n_events):
-        # --- generated always counts ---
-        if iQ2_gen[i] >= 0 and iXb_gen[i] >= 0 and it_gen[i] >= 0 and iphi_gen[i] >= 0:
-            gen_counts[iQ2_gen[i], iXb_gen[i], it_gen[i], iphi_gen[i]] += 1
+    global_mask_gemc = np.ones_like(valid_rec, dtype=bool)
+    
+    if use_global_cuts:
+        global_cut_params_gemc, global_mask_gemc = compute_global_cuts(
+            df_np=df_np_gemc,
+            in_range_mask=valid_rec,
+            pIdx=pIdx_rec,
+            exclusive_vars=exclusive_vars,
+            apply_sideband=apply_sideband,
+            n_sigma_signal=n_sigma_signal,
+            verbose=verbose,
+            label="GEMC"
+        )
+    
+    valid_rec &= global_mask_gemc
 
-        # --- reconstructed only if valid ---
-        if valid_mask is None or valid_mask[i]:
-            if iQ2_rec[i] >= 0 and iXb_rec[i] >= 0 and it_rec[i] >= 0 and iphi_rec[i] >= 0:
-                rec_counts[iQ2_rec[i], iXb_rec[i], it_rec[i], iphi_rec[i]] += 1
+    np.add.at(gen_counts, (iQ2_gen[valid_gen], iXb_gen[valid_gen], it_gen[valid_gen], iphi_gen[valid_gen]), 1)
+    np.add.at(rec_counts, (iQ2_rec[valid_rec], iXb_rec[valid_rec], it_rec[valid_rec], iphi_rec[valid_rec]), 1)
 
     acceptance = np.divide(rec_counts, gen_counts, out=np.zeros_like(rec_counts), where=gen_counts>0)
 
     # --- mask bins below threshold ---
-    acceptance_masked = np.where(acceptance >= min_acceptance, acceptance, np.nan)
+    acceptance_masked = np.where(acceptance >= min_acc, acceptance, np.nan)
 
     return acceptance_masked, gen_counts, rec_counts
 
@@ -382,20 +490,22 @@ if args.verbose:
     log_file = open("xsec_log.txt", "w")
     sys.stdout = log_file
 
-### --------------- Read eppi0REC ROOT file --------------- ###
-f = ROOT.TFile(args.input_file, "READ")
-summary_tree = f.Get("Summary")
-summary_tree.GetEntry(0)
-events_tree = f.Get("Events")
-df = ROOT.RDataFrame(events_tree)
-cols = ["dis.Q2","dis.Xb","eppi0.t","eppi0.trentoPhi","p.det","eppi0.pi0_thetaX","eppi0.m2_epX","eppi0.m_eggX","eppi0.E_miss","eppi0.m_gg"]
-df_numpy = df.AsNumpy(columns=cols)
-for k in cols: df_numpy[k] = coerce_scalar_column(df_numpy[k])
+### ------ Sideband subtraction parameters:
+n_sigma_signal = 3
+n_sigma_sb_min = 3
+n_sigma_sb_max = 5
+
+# Flags to toggle cuts
+use_global_cuts = not args.local_cuts  
+apply_cuts = True
+apply_sideband = False
+
+# Exclusivity variables:
 ex_vars = ["m2_epX", "m_eggX", "E_miss", "pi0_thetaX", "m_gg"]
 #exclusive_vars = ["m2_epX", "m_eggX", "E_miss", "pi0_thetaX"] # not including m_gg
-#exclusive_vars = ["m_gg"] # not including m_gg
+exclusive_vars = ["m2_epX", "m_eggX", "E_miss", "pi0_thetaX", "m_gg"] 
 
-### --------------- Initialize binning scheme --------------- ###
+### --------------- Initialize bins --------------- ###
 if args.adaptive:
     Q2_edges = get_adaptive_edges(events_tree, "dis.Q2", 6, 1.0, 6.5)
     Xb_edges = get_adaptive_edges(events_tree, "dis.Xb", 6, 0.1, 0.7)
@@ -419,84 +529,67 @@ elif args.manual:
     t_edges  = np.array([0.0, 2.0])
     phi_edges = np.linspace(0, 360, 11)
 else:
-    raise RuntimeError("Must specify binning scheme, e.g., --adaptive or --clas6 or --manual")
-
-iQ2   = get_bin_indices(df_numpy["dis.Q2"], Q2_edges)
-iXb   = get_bin_indices(df_numpy["dis.Xb"], Xb_edges)
-it    = get_bin_indices(df_numpy["eppi0.t"], t_edges)
-iphi  = get_bin_indices((df_numpy["eppi0.trentoPhi"] + 2*np.pi) % (2*np.pi) * 180.0/np.pi, phi_edges)
-pIdx  = np.where(np.isclose(df_numpy["p.det"], 1.0), 0, 1).astype(int)
-
-in_range = (iQ2>=0) & (iXb>=0) & (it>=0) & (iphi>=0)
-print(f"Total REC events observed in designated kinematic range: {np.sum(in_range)}")
+    raise RuntimeError("Must specify binning scheme, e.g., --adaptive, --clas12, --clas6, or --manual")
 
 bins_map = (len(Q2_edges)-1, len(Xb_edges)-1, len(t_edges)-1, len(phi_edges)-1, 2)
 
-### ------ Sideband subtraction parameters:
-n_sigma_signal = 3
-n_sigma_sb_min = 3
-n_sigma_sb_max = 5
-
-# Flags to optionally toggle cuts
-use_global_cuts = not args.local_cuts  # global cuts are default
-apply_cuts = False
-apply_sideband = False
-
-### -------- Global ex. cuts (per proton topology) --------- ###
-global_cuts = {}
-global_mgg = {}  # store global m_gg fit per topology
-if apply_cuts and use_global_cuts:
-    print(">>> Deriving global exclusivity cuts (for separate proton topologies)...")
-    for p in range(2):  # pIdx = 0 (FD), 1 (CD)
-        surv_mask = (in_range) & (pIdx == p)
-        for var in exclusive_vars:
-            vals = df_numpy[f"eppi0.{var}"][surv_mask]
-            if len(vals) == 0:
-                continue
-            mu, sigma = fit_exclusive(vals, name=var)
-            global_cuts[(var, p)] = (mu, sigma)
-            if args.verbose:
-                print(f"Global {var}, pIdx={p}: mu={mu:.5f}, sigma={sigma:.5f}")
-
-            # sequentially apply exclusivity cut
-            surv_mask[surv_mask] &= np.abs(vals - mu) <= n_sigma_signal*sigma
-            if args.verbose:
-                print(f"Var={var}, pIdx={p}: mu={mu:.5f}, sigma={sigma:.5f}, survived {np.sum(surv_mask)}")
-
-        # after exclusivity cuts, determine global mgg mean & sigma
-        if apply_sideband:
-            mgg_vals = df_numpy["eppi0.m_gg"][surv_mask]
-            if len(mgg_vals) > 0:
-                mu_mgg, sigma_mgg = fit_exclusive(mgg_vals, name="m_gg_global", nbins=200)
-                global_mgg[p] = (mu_mgg, sigma_mgg)
-                if args.verbose:
-                    print(f"Global m_gg, pIdx={p}: mu={mu_mgg:.5f}, sigma={sigma_mgg:.5f}")
-
 ### ------ create 4D arrays + boolean mask for final survivors:
 side_sub_yield4D = np.zeros(bins_map[:4], dtype=float) 
-errs4D = np.zeros(bins_map[:4], dtype=float)
 xsec4D = np.zeros(bins_map[:4], dtype=float) 
-surv_mask_all = np.zeros(len(df_numpy["dis.Q2"]), dtype=bool)
+errs4D = np.zeros(bins_map[:4], dtype=float)
 
+### --------------- Read eppi0REC ROOT file --------------- ###
+f = ROOT.TFile(args.input_file, "READ")
+events_tree = f.Get("Events")
+summary_tree = f.Get("Summary")
+summary_tree.GetEntry(0)
 BEAM_Q = summary_tree.TotalCharge * 1e-9 # C
-# print("Beam Q [C] = ", BEAM_Q)
 LUM_INT = luminosity(BEAM_Q) # fb^-1
-#LUM_INT = 20 # fb^-1
-print("Integrated luminosity = ", LUM_INT)
-BR = 0.988
+print("Beam Q [C] = ", BEAM_Q, " ; Integrated Luminosity [fb^-1] = ", LUM_INT)
+
+cols_rec = ["dis.Q2","dis.Xb","eppi0.t","eppi0.trentoPhi","p.det","eppi0.pi0_thetaX","eppi0.m2_epX","eppi0.m_eggX","eppi0.E_miss","eppi0.m_gg"]
+df_np_data = load_np_from_file(args.input_file, cols_rec)
+
+iQ2_data   = get_bin_indices(df_np_data["dis.Q2"], Q2_edges)
+iXb_data   = get_bin_indices(df_np_data["dis.Xb"], Xb_edges)
+it_data    = get_bin_indices(df_np_data["eppi0.t"], t_edges)
+iphi_data  = get_bin_indices((df_np_data["eppi0.trentoPhi"] + 2*np.pi) % (2*np.pi) * 180.0/np.pi, phi_edges)
+pIdx_data  = np.where(np.isclose(df_np_data["p.det"], 1.0), 0, 1).astype(int)
+
+in_range_data = (iQ2_data>=0) & (iXb_data>=0) & (it_data>=0) & (iphi_data>=0)
+print(f"Total REC data events in kinematic binning range: {np.sum(in_range_data)}")
 
 ### ----------------- Acceptance from GEMC: ----------------- ###
 acceptance = None
 if args.gemc:
-    cols_gemc = ["gen_dis.Q2","gen_dis.Xb","gen_eppi0.t","gen_eppi0.trentoPhi", "dis.Q2","dis.Xb","eppi0.t","eppi0.trentoPhi"]
-    df_numpy_gemc = load_gemc(args.gemc, cols_gemc)
-    # total generated events
-    total_gen_events = len(df_numpy_gemc["gen_dis.Q2"])
+    cols_gemc = ["gen_dis.Q2","gen_dis.Xb","gen_eppi0.t","gen_eppi0.trentoPhi"] + list(cols_rec)
+    df_np_gemc = load_np_from_file(args.gemc, cols_gemc)
+    total_gen_events = len(df_np_gemc["gen_dis.Q2"])
     print(f"Total generated GEMC events: {total_gen_events}")
-    valid_mask = is_valid_rec(df_numpy_gemc)
-    print(f"Total Non-sentinel GEMC reconstructed events: {np.sum(valid_mask)}")
-    acceptance, gen_counts, rec_counts = compute_acceptance(df_numpy_gemc, Q2_edges, Xb_edges, t_edges, phi_edges, xsec4D.shape, valid_mask)
+    valid_mask = no_sentinels_mask(df_np_gemc)
+    cfg = {}
+    if apply_cuts:
+        cfg = {"use_global_cuts": use_global_cuts, 
+               "exclusive_vars": exclusive_vars, 
+               "apply_sideband": apply_sideband, 
+               "n_sigma_signal": n_sigma_signal, 
+               "verbose": args.verbose}
+    acceptance, gen_counts, rec_counts = compute_acceptance(df_np_gemc, (Q2_edges, Xb_edges, t_edges, phi_edges), xsec4D.shape, valid_mask, cfg=cfg)
     save_acceptance_maps(acceptance, gen_counts, rec_counts, Q2_edges, Xb_edges, t_edges, phi_edges)
+
+
+### -------- Global ex. cuts (per proton topology) --------- ###
+if apply_cuts and use_global_cuts:
+    global_cut_params_data, global_exclusivity_mask_data = compute_global_cuts(
+        df_np=df_np_data,
+        in_range_mask=in_range_data,
+        pIdx=pIdx_data,
+        exclusive_vars=exclusive_vars,
+        apply_sideband=apply_sideband,
+        n_sigma_signal=n_sigma_signal,   # can rework these kwargs with cfg from above
+        verbose=args.verbose,
+        label="DATA"
+    )
 
 ### ----------- Create tree to track raw counts ----------- ###
 out_file = ROOT.TFile("survival_summary.root", "RECREATE")
@@ -527,7 +620,8 @@ eprime_scale = 0.81     # 1 - min(p_e')/E_beam, ONLY A PLACEHOLDER BASED ON RGK 
 Q2_left_slope = 2 * PROTON_MASS * Ebeam * eprime_scale
 
 ### ---------------------------------- XSECTION Workflow ---------------------------------- ###
-## NOTE: need to make simulated exclusivity cuts different than data
+surv_mask_all = np.zeros(len(df_np_data["dis.Q2"]), dtype=bool)
+
 for q2 in range(bins_map[0]):
     for xb in range(bins_map[1]):
         for t in range(bins_map[2]):
@@ -535,7 +629,7 @@ for q2 in range(bins_map[0]):
             for phi in range(bins_map[3]):
                 dphi = phi_edges[phi+1] - phi_edges[phi]
         
-                mask_bin = (in_range) & (iQ2==q2) & (iXb==xb) & (it==t) & (iphi==phi)
+                mask_bin = (in_range_data) & (iQ2_data==q2) & (iXb_data==xb) & (it_data==t) & (iphi_data==phi)
                 num_events = np.sum(mask_bin)
                 if num_events > 0:
                     q2b[0], xbb[0], tb[0], phib[0], count[0] = q2, xb, t, phi, num_events
@@ -562,82 +656,70 @@ for q2 in range(bins_map[0]):
                 # dxb = Xb_edges[xb+1] - Xb_edges[xb]
 
                 bin_volume = area_Q2_xB * dt * dphi
-                if bin_volume == 0:
+                if bin_volume == 0: # or not np.any(mask_bin):
                     continue
-                bin_variance = 0
+
                 bin_yield = 0
+                bin_variance = 0
 
-                # loop over 2 possible proton topologies:
-                for p in range(2):
-                    mask_bin_p = mask_bin & (pIdx==p)
-                    num_events = np.sum(mask_bin_p)
-                    
-                    if args.verbose and num_events > 0:
-                        print(f"Bin [Q2: {q2}, Xb: {xb}, t: {t}, phi: {phi}, pIdx: {p}] += {num_events} events.")
-                    if not np.any(mask_bin_p):
-                        continue
-                    
-                    surv_mask = mask_bin_p.copy()
-                    if apply_cuts:
-                        for var in exclusive_vars:
-                            if args.verbose and np.sum(surv_mask) > 0:
-                                print(f"Initiating {var} cuts with {np.sum(surv_mask)} events.")
-                            if use_global_cuts:
-                                if (var, p) not in global_cuts:
-                                    continue  # no global fit possible for this topology
-                                mu, sigma = global_cuts[(var, p)]
-                            else:
-                                vals = df_numpy[f"eppi0.{var}"][surv_mask]
-                                mu, sigma = fit_exclusive(vals, name=var, nbins=200)
-
-                            vals = df_numpy[f"eppi0.{var}"][surv_mask]
-                            surv_mask[surv_mask] &= np.abs(vals - mu) <= n_sigma_signal*sigma
-
-                            if args.verbose:
-                                print(f"{var} cut applied with mu={mu:.5f}, sigma={sigma:.5f}, "
-                                    f"survived {np.sum(surv_mask)} events")
-                                
-                    ### ------------ Sideband subtraction (m_gg) ------------ ###
-                    if apply_sideband:
-                        mgg_vals = df_numpy["eppi0.m_gg"][surv_mask]
-
-                        if use_global_cuts:
-                            if p not in global_mgg:
-                                continue
-                            mu_mgg, sigma_mgg = global_mgg[p]
-                        else:
-                            if len(vals) == 0:
-                                continue
-                            mu_mgg, sigma_mgg = fit_exclusive(mgg_vals, name="m_gg", nbins=200)
-                        
-                        sig_mask = np.abs(mgg_vals - mu_mgg) < n_sigma_signal*sigma_mgg
-                        sb_mask  = ((mu_mgg - n_sigma_sb_max*sigma_mgg <= mgg_vals) & 
-                                    (mgg_vals < mu_mgg - n_sigma_sb_min*sigma_mgg)) | \
-                                ((mu_mgg + n_sigma_sb_min*sigma_mgg < mgg_vals) & 
-                                    (mgg_vals <= mu_mgg + n_sigma_sb_max*sigma_mgg))
-
-                        n_sig = np.sum(sig_mask)
-                        n_sb  = np.sum(sb_mask)
-                        w_sig = 2 * n_sigma_signal * sigma_mgg
-                        w_sb  = 2 * (n_sigma_sb_max - n_sigma_sb_min) * sigma_mgg
-                        alpha = w_sig / w_sb if w_sb > 0 else 0.0
-                        n_bkg = n_sb * alpha
-                        if args.verbose and n_sig > 0:
-                            print(f"Bin [Q2: {q2}, Xb: {xb}, t: {t}, phi: {phi}] contains {n_sig} signal events and {n_bkg} background events.")
-                        bin_variance += n_sig + (alpha**2) * n_sb
-                        if (n_sig - n_bkg) < 0:
-                            print("nsig - nbkg less than 0!")
-                        bin_yield += n_sig - n_bkg
-
-                    else:
-                        # No sideband subtraction
-                        bin_yield += np.sum(surv_mask)
-                        bin_variance += np.sum(surv_mask)
-
-                    # Mark surviving events
-                    surv_mask_all[surv_mask] = True
+                # apply global cuts once
+                if apply_cuts and use_global_cuts:
+                    mask_bin &= global_exclusivity_mask_data
                 
-                if bin_yield == 0 and bin_variance == 0:
+                # check if we need the proton loop
+                use_proton_loop = (apply_cuts and not use_global_cuts) or apply_sideband
+
+                if use_proton_loop:
+                    for p in range(2):
+                        mask_bin_p = mask_bin & (pIdx_data == p)
+                        if not np.any(mask_bin_p):
+                            continue
+                        if args.verbose:
+                            print(f"Bin [Q2:{q2}, Xb:{xb}, t:{t}, phi:{phi}, pIdx:{p}] += {np.sum(mask_bin_p)} events.")
+
+                        local_mask = mask_bin_p.copy()
+
+                        # local cuts
+                        if apply_cuts and not use_global_cuts:
+                            for var in exclusive_vars:
+                                vals = df_np_data[f"eppi0.{var}"][local_mask]
+                                mu, sigma = fit_exclusive(vals, name=var)
+                                local_mask[local_mask] &= np.abs(vals - mu) <= n_sigma_signal * sigma
+
+                        # sideband subtraction / yield
+                        if apply_sideband:
+                            mgg_vals = df_np_data["eppi0.m_gg"][local_mask]
+                            if use_global_cuts:
+                                mu_mgg, sigma_mgg = global_cut_params_data.get(("m_gg", p), (0, 0)) # Note default...
+                            else:
+                                mu_mgg, sigma_mgg = fit_exclusive(mgg_vals, name="m_gg")
+
+                            sig_mask = np.abs(mgg_vals - mu_mgg) < n_sigma_signal*sigma_mgg
+                            sb_mask  = ((mu_mgg - n_sigma_sb_max*sigma_mgg <= mgg_vals) & 
+                                        (mgg_vals < mu_mgg - n_sigma_sb_min*sigma_mgg)) | \
+                                    ((mu_mgg + n_sigma_sb_min*sigma_mgg < mgg_vals) & 
+                                        (mgg_vals <= mu_mgg + n_sigma_sb_max*sigma_mgg))
+
+                            n_sig = np.sum(sig_mask)
+                            n_sb  = np.sum(sb_mask)
+                            alpha = (2*n_sigma_signal*sigma_mgg) / (2*(n_sigma_sb_max-n_sigma_sb_min)*sigma_mgg) if n_sb > 0 else 0
+                            n_bkg = n_sb * alpha
+                            bin_variance += n_sig + (alpha**2) * n_sb
+                            bin_yield += n_sig - n_bkg
+                        else:
+                            bin_yield += np.sum(local_mask)
+                            bin_variance += np.sum(local_mask) # Need to consider yield == 0 more carefully! 
+
+                        # mark surviving events
+                        surv_mask_all[local_mask] = True
+
+                else:
+                    bin_yield = np.sum(mask_bin)
+                    bin_variance = np.sum(mask_bin)
+                    surv_mask_all[mask_bin] = True
+
+                # fill 4D arrays
+                if bin_yield == 0 and bin_variance == 0: # need to consider this part more carefully
                     side_sub_yield4D[q2, xb, t, phi] = np.nan
                     errs4D[q2, xb, t, phi] = np.nan
                     xsec4D[q2, xb, t, phi] = np.nan
@@ -657,7 +739,8 @@ if acceptance is not None:
 
 surviving_indices = np.flatnonzero(surv_mask_all)
 print(f"Total surviving events: {len(surviving_indices)}")
-print(f"Total yield after 3σ cuts + sideband subtraction: {side_sub_yield4D.sum():.3f}")
+if apply_sideband:
+    print(f"Total yield after 3σ cuts + sideband subtraction: {np.nansum(side_sub_yield4D):.3f}")
 
 ### ----------------- Fill survival ROOT histograms ----------------- ###
 hist_dict = {}
@@ -675,7 +758,7 @@ core_vars = {
 
 # Fill histograms for core kinematic variables
 for key, (branch, title) in core_vars.items():
-    vals = df_numpy[branch][surviving_indices]
+    vals = df_np_data[branch][surviving_indices]
     if len(vals) == 0:
         continue
 
@@ -697,7 +780,7 @@ for key, (branch, title) in core_vars.items():
 
 # --- Extra histograms for variables already in ex_vars ---
 for var in ex_vars:
-    vals = df_numpy[f"eppi0.{var}"][surviving_indices]
+    vals = df_np_data[f"eppi0.{var}"][surviving_indices]
     if len(vals) == 0:
         continue
     h = ROOT.TH1D(f"h_{var}_all", f"h_{var}_all", nbins_default, np.min(vals), np.max(vals))
@@ -742,9 +825,9 @@ h_Q2_Xb_binned = ROOT.TH2D(
 h_Q2_Xb = ROOT.TH2D(
     "h_Q2_Xb", "Q^{2} vs x_{B} Coverage; x_{B}; Q^{2} [GeV^{2}]; Events",
     100, 0.05, 0.8,
-    100, 0.0, np.max(df_numpy["dis.Q2"][surviving_indices])
+    100, 0.0, np.max(df_np_data["dis.Q2"][surviving_indices])
 )
-for q2, xb in zip(df_numpy["dis.Q2"][surviving_indices], df_numpy["dis.Xb"][surviving_indices]):
+for q2, xb in zip(df_np_data["dis.Q2"][surviving_indices], df_np_data["dis.Xb"][surviving_indices]):
     h_Q2_Xb.Fill(xb, q2)
     h_Q2_Xb_binned.Fill(xb, q2)
 
@@ -784,14 +867,14 @@ for q2 in range(bins_map[0]):
                 continue
 
             # surviving event mask for this 4D bin
-            mask_bin = (iQ2 == q2) & (iXb == xb) & (it == t) & surv_mask_all
+            mask_bin = (iQ2_data == q2) & (iXb_data == xb) & (it_data == t) & surv_mask_all
             if not np.any(mask_bin):
                 continue
 
             # compute bin centers for Q2 and Xb (arithmetic mean of surviving events)
-            Q2_center = np.mean(df_numpy["dis.Q2"][mask_bin])
-            Xb_center = np.mean(df_numpy["dis.Xb"][mask_bin])
-            t_center  = np.mean(df_numpy["eppi0.t"][mask_bin])
+            Q2_center = np.mean(df_np_data["dis.Q2"][mask_bin])
+            Xb_center = np.mean(df_np_data["dis.Xb"][mask_bin])
+            t_center  = np.mean(df_np_data["eppi0.t"][mask_bin])
 
             # compute virtual photon flux
             gamma = gamma_flux(Q2_center, Xb_center, Ebeam)
@@ -867,4 +950,3 @@ if args.verbose:
     print("Verbose output saved to xsec_log.txt")
 
 print("Saved phi-projected reduced cross sections [fb/GeV^2] to phi_xsec.root")
-

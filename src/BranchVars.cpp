@@ -195,11 +195,37 @@ double EPPI0Vars::computeTrentoPhi(const TLorentzVector& lv_beam,
 
 
 void EPPI0Vars::fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_pPrime, 
-                     const TLorentzVector& lv_g1, const TLorentzVector& lv_g2, double ebeam, double m_target) {
+                     const TLorentzVector& lv_obj1, const TLorentzVector& lv_obj2, double ebeam, bool is_rad, double m_target) {
     // Beam and target 4-vectors:
     TLorentzVector lv_beam(0, 0, ebeam, ebeam);
     TLorentzVector lv_target(0, 0, 0, m_target);
-    TLorentzVector lv_pi0 = lv_g1 + lv_g2;
+    TLorentzVector lv_pi0;
+    TLorentzVector lv_g1, lv_g2;        // always stored (rad → zero)
+    TLorentzVector lv_g_rad;            // always stored (non-rad → zero)
+
+    if (!is_rad) {
+        // ---------------------------
+        // NON-RADIATIVE: obj1 = g1, obj2 = g2
+        // ---------------------------
+        lv_g1  = lv_obj1;
+        lv_g2  = lv_obj2;
+        lv_pi0 = lv_obj1 + lv_obj2;
+
+        // No radiative photon
+        lv_g_rad.SetPxPyPzE(0,0,0,0);
+    }
+    else {
+        // ---------------------------
+        // RADIATIVE: obj1 = pi0, obj2 = gamma_rad
+        // ---------------------------
+        lv_pi0   = lv_obj1;   // generator π0
+        lv_g_rad = lv_obj2;   // radiative photon
+
+        // No decay photons stored
+        lv_g1.SetPxPyPzE(0,0,0,0);
+        lv_g2.SetPxPyPzE(0,0,0,0);
+    }
+
 
     TLorentzVector lv_missing = lv_beam + lv_target - lv_ePrime - lv_pPrime - lv_pi0;
     TLorentzVector lv_epX     = lv_beam + lv_target - lv_ePrime - lv_pPrime;
@@ -210,24 +236,30 @@ void EPPI0Vars::fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_p
     pi0_phi       = lv_pi0.Phi();
     pi0_deltaPhi  = TVector2::Phi_mpi_pi(lv_pi0.Phi() - lv_epX.Phi());
     pi0_thetaX    = lv_pi0.Vect().Angle(lv_epX.Vect());
-
     m_gg          = lv_pi0.M();
+
     m2_miss       = lv_missing.M2();
     m2_epX        = lv_epX.M2();
     m2_epi0X      = lv_epi0X.M2();
-    m_eggX         = (m2_epi0X >= 0.0) ? std::sqrt(m2_epi0X) : NAN;
+    m_eggX        = (m2_epi0X >= 0.0) ? std::sqrt(m2_epi0X) : NAN;
     E_miss        = lv_missing.E();
     px_miss       = lv_missing.Px();
     py_miss       = lv_missing.Py();
     pz_miss       = lv_missing.Pz();
     pT_miss       = lv_missing.Pt();
 
-    theta_e_g1    = lv_ePrime.Vect().Angle(lv_g1.Vect());
-    theta_e_g2    = lv_ePrime.Vect().Angle(lv_g2.Vect());
-    theta_g1_g2   = lv_g1.Vect().Angle(lv_g2.Vect());
+    theta_e_g1  = is_rad ? NAN : lv_ePrime.Vect().Angle(lv_g1.Vect());
+    theta_e_g2  = is_rad ? NAN : lv_ePrime.Vect().Angle(lv_g2.Vect());
+    theta_g1_g2 = is_rad ? NAN : lv_g1.Vect().Angle(lv_g2.Vect());
+
+    // Radiative photon quantities
+    g_rad_E     = is_rad ? lv_g_rad.E() : NAN;
+    g_rad_p     = is_rad ? lv_g_rad.P() : NAN;
+    g_rad_theta = is_rad ? lv_g_rad.Theta() : NAN;
+    g_rad_phi   = is_rad ? lv_g_rad.Phi() : NAN;
 
     // NOTE: "t" is implicitly -t!
-    t = -1 * (lv_pPrime - lv_target).M2();
+    t = -1 * (lv_target - lv_pPrime).M2();
 
     // // Trento Phi: angle from lepton plane to hadron plane, w.r.t. virtual photon momentum
     // // 3 vectors

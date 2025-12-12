@@ -81,10 +81,11 @@ struct EPPI0Vars : public TObject {
     double m_gg, m2_miss, m2_epX, m2_epi0X, m_eggX;
     double E_miss, px_miss, py_miss, pz_miss, pT_miss;
     double theta_e_g1, theta_e_g2, theta_g1_g2;
+    double g_rad_E, g_rad_p, g_rad_theta, g_rad_phi;
     double t, trentoPhi;
     
     void flush() {
-        pi0_p = pi0_theta = pi0_phi = pi0_deltaPhi = NAN;
+        pi0_p = pi0_theta = pi0_phi = pi0_deltaPhi = pi0_thetaX = NAN;
         m_gg = m2_miss = m2_epX = m2_epi0X = NAN;
         E_miss = px_miss = py_miss = pz_miss = pT_miss = NAN;
         theta_e_g1 = theta_e_g2 = theta_g1_g2 = NAN;
@@ -92,8 +93,7 @@ struct EPPI0Vars : public TObject {
     }
 
     void fill(const TLorentzVector& lv_ePrime, const TLorentzVector& lv_pPrime, 
-              const TLorentzVector& lv_g1, const TLorentzVector& lv_g2, double ebeam, double m_target=PROTON_MASS);
-
+              const TLorentzVector& lv_g1, const TLorentzVector& lv_g2, double ebeam, bool is_rad=false, double m_target=PROTON_MASS);
 
     private:
     // Helper: compute Trento phi

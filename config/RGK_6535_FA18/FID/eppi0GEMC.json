@@ -17,6 +17,5 @@
     "qa": ["MarginalOutlier", "TerminalOutlier", "TotalOutlier", "SectorLoss", "LowLiveTime"],
     "SFCuts": "/work/clas12/storyf/SF_analysis_software/config/RGK_6535_FA18/cuts_and_corrections/SF_sigma_cut_params_GEMC.json",
     "kinCorrections": "/work/clas12/storyf/SF_analysis_software/config/RGK_6535_FA18/cuts_and_corrections/protonEnergyLoss_params_standard.json",
-    "tag": "RGK_FID_AAONORAD_35nA",
-    "maxEvents": 1e9
+    "tag": "RGK_FID_AAO_RAD_35nA"
 }

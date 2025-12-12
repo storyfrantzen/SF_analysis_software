@@ -1,3 +1,4 @@
+#type: ignore
 import ROOT
 
 root_file = "EPPI0plots.root"

@@ -1,13 +1,13 @@
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
-fData = ROOT.TFile.Open("RGKSKIM6.5_EPPI0plots.root")
-fGEMC = ROOT.TFile.Open("PSEUDO6.5_EPPI0plots.root")
+fData = ROOT.TFile.Open("expEPPI0plots.root")
+fGEMC = ROOT.TFile.Open("simEPPI0plots.root")
 fOut = ROOT.TFile.Open("overlay_EPPI0plots_final.root", "RECREATE")
 
 hist_names = [
     "h_helicity", "h_mgg", "h_mgg_pFD", "h_mgg_pCD",
-    "h_Q2", "h_W", "h_t", "h_phiT",
+    "h_Q2", "h_Xb", "h_W", "h_t", "h_phiT",
     "h_theta_e_g1", "h_theta_e_g2", "h_theta_g1_g2",
     "h_m2_miss", "h_m2_miss_pFD", "h_m2_miss_pCD",
     "h_m2_epX", "h_m2_epX_pFD", "h_m2_epX_pCD",

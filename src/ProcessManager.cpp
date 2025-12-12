@@ -408,7 +408,7 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
     auto photons   = c12.getByID(22);   // PID 22 = photon
 
     // Reject if not EPPI0 final state, according to eventbuilder:
-    if (photons.size() < 2 || electrons.size() < 1 || protons.size() < 1) return;
+    if (photons.size() < 2 || electrons.size() != 1 || protons.size() != 1) return;
 
     ev_.flush();
     e_.flush();
@@ -495,7 +495,7 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
                     // if (sec1 != sec2) continue;
 
                     // Reject if photons are detected in same sector as electron (ANDREY):
-                    // if (sec1 == secEle || sec2 == secEle) continue;
+                    if (sec1 == secEle || sec2 == secEle) continue;
 
                     // Reject if either photon has momentum less than threshold (Bobby's thesis):
                     if (g1->getP() < 0.4  || g2->getP() < 0.4) continue;
@@ -518,7 +518,7 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
                     TLorentzVector lv_candidatePi0 = lv_g1 + lv_g2;
 
                     double deltaM = std::abs(lv_candidatePi0.M() - PI0_MASS);
-                    //if (deltaM > 0.1) continue;
+                    if (deltaM > 0.15) continue;
 
                     if (deltaM < leastDeltaM) {
                         detPi0         = det1; // Assign to pi0 the detector of the photon
@@ -585,14 +585,12 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
     eppi0_.fill(lv_ePrime, lv_pPrime, lv_g1, lv_g2, ebeam_);
 
     // LOOSE GLOBAL EXCLUSIVITY CUTS:
-    // if (eppi0_.m2_miss > 1) return;  // only removes ~3 events? Not necessary
-    // if (eppi0_.pT_miss > 0.2) return;
+    // if (abs(eppi0_.pT_miss) > 0.2) return;
     // if (eppi0_.t > 2) return;
-    // if (eppi0_.E_miss > 1.5) return;
-    // if (eppi0_.pz_miss > 1) return; // might be overstepping E_miss cut
-    // if (eppi0_.theta_e_g1 * 180.0/M_PI < 4 || eppi0_.theta_e_g2 * 180.0/M_PI < 4) return; // BOBBY
-    // if (eppi0_.theta_g1_g2 * 180.0/M_PI < 1) return; // BOBBY
-    // if (eppi0_.pi0_thetaX * 180.0/M_PI > 4) return; // 2 deg used in CLAS6 analysis
+    if (abs(eppi0_.E_miss) > 2) return;
+    if (eppi0_.theta_e_g1 * 180.0/M_PI < 4 || eppi0_.theta_e_g2 * 180.0/M_PI < 4) return; // BOBBY
+    if (eppi0_.theta_g1_g2 * 180.0/M_PI < 1) return; // BOBBY
+    if (eppi0_.pi0_thetaX * 180.0/M_PI > 4) return; // 2 deg used in CLAS6 analysis
     // if (eppi0_.m2_epX > 1) return;
     // if (eppi0_.m2_epi0X > 3) return;
 
@@ -603,12 +601,28 @@ void ProcessManager::processEPPI0REC(clas12::clas12reader& c12) {
 
 void ProcessManager::processEPPI0GEMC(clas12::clas12reader& c12) { 
 
+    // ===================================================================== //
+    // ============= AAO_norad: 1 electron, 1 proton, 2 photons ============ //
+    // ============= AAO_rad:   1 electron, 1 proton, 1 pion, 1 photon ===== //
+
     // =================== GENERATED BLOCK (ALWAYS FILL) =================== //
-    TLorentzVector lv_gen_ePrime, lv_gen_pPrime;
+    TLorentzVector lv_gen_ePrime, lv_gen_pPrime, lv_gen_g1, lv_gen_g2, lv_gen_pi0;
     std::vector<TLorentzVector> lv_genPhotons;
+    bool found_pi0 = false;
 
     auto mcParticles = c12.mcparts();
     int numGen = mcParticles->getRows(); 
+
+    // --------------------------
+    // Identify radiative events
+    // --------------------------
+    bool is_rad = false;
+    for (int j = 0; j < numGen; j++) {
+        if (mcParticles->getPid(j) == 111) {   // π0 in generator → radiative sample
+            is_rad = true;
+            break;
+        }
+    }
 
     for (int j = 0; j < numGen; j++) {
             int gen_pid = mcParticles->getPid(j);
@@ -625,22 +639,45 @@ void ProcessManager::processEPPI0GEMC(clas12::clas12reader& c12) {
             else if (gen_pid == 22) {
                 lv_genPhotons.emplace_back(v_gen_p.Px(), v_gen_p.Py(), v_gen_p.Pz(), v_gen_p.Mag());
             }
+            else if (gen_pid == 111) {
+                lv_gen_pi0.SetPxPyPzE(v_gen_p.Px(), v_gen_p.Py(), v_gen_p.Pz(), 
+                                         std::sqrt(PI0_MASS * PI0_MASS + v_gen_p.Mag() * v_gen_p.Mag()));
+            }
     }
 
-    // Pick first two photons for generator pi0
-    TLorentzVector lv_gen_g1, lv_gen_g2;
-    if (lv_genPhotons.size() >= 2) {
+    if (!is_rad) {
+        // NONRADIATIVE: expect 2 generator photons
+        if (lv_genPhotons.size() < 2) {
+            // you may want to print a warning here
+            return;
+        }
         lv_gen_g1 = lv_genPhotons[0];
         lv_gen_g2 = lv_genPhotons[1];
-    } // Note: raise error if fewer than 2 photons are generated
+    }
+    else {
+        // RADIATIVE: expect π0 + radiative γ
+        // Generator does not give π0 → γγ decay products (GEANT does)
+        // The radiative photon is the single generator γ
+        if (lv_genPhotons.size() != 1) {
+            // RadGen should produce exactly one photon at generator level
+            // If not: skip or debug warning.
+            return;
+        } 
+        lv_gen_g1 = lv_genPhotons[0]; // assign radiative photon to g1
+    }
     
     gen_dis_.flush();
     gen_dis_.fill(lv_gen_ePrime, ebeam_);
 
     gen_eppi0_.flush();
-    gen_eppi0_.fill(lv_gen_ePrime, lv_gen_pPrime, lv_gen_g1, lv_gen_g2, ebeam_);
 
-    // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region
+    // Choose objects to pass in based on mode
+    TLorentzVector lv_obj1 = is_rad ? lv_gen_pi0 : lv_gen_g1;
+    TLorentzVector lv_obj2 = is_rad ? lv_gen_g1 : lv_gen_g2;
+
+    gen_eppi0_.fill(lv_gen_ePrime, lv_gen_pPrime, lv_obj1, lv_obj2, ebeam_, is_rad);
+
+    // Reject if Q2 < 1, W < 2, or y > 0.8, i.e., not in standard DIS region  Need to think about removing this for migrations
     if (!channelCheck(gen_dis_.Q2, gen_dis_.W, gen_dis_.y)) return;
 
     // =================== RECONSTRUCTED BLOCK =================== //
@@ -715,7 +752,7 @@ void ProcessManager::processEPPI0GEMC(clas12::clas12reader& c12) {
                         int sec2 = g2->getSector();
 
                         if (det1 == 2 || det2 == 2) continue;
-                        if (sec1 != sec2) continue;
+                        //if (sec1 != sec2) continue;
 
                         if (sec1 == secEle || sec2 == secEle) continue;
 
@@ -734,7 +771,7 @@ void ProcessManager::processEPPI0GEMC(clas12::clas12reader& c12) {
                         TLorentzVector lv_candidatePi0 = lv_g1 + lv_g2;
 
                         double deltaM = std::abs(lv_candidatePi0.M() - PI0_MASS);
-                        if (deltaM > 0.1) continue;
+                        if (deltaM > 0.15) continue;
 
                         if (deltaM < leastDeltaM) {
                             detPi0         = det1;
@@ -791,18 +828,15 @@ void ProcessManager::processEPPI0GEMC(clas12::clas12reader& c12) {
             eppi0_.fill(lv_ePrime, lv_pPrime, lv_g1, lv_g2, ebeam_);
 
             do {
-
                 // LOOSE GLOBAL EXCLUSIVITY CUTS:
-                if (eppi0_.m2_miss > 1) return;
-                if (eppi0_.pT_miss > 0.2) return;
-                if (eppi0_.t > 2) return;
-                if (eppi0_.E_miss > 1.5) return;
-                if (eppi0_.pz_miss > 1) return; // might be overstepping E_miss cut
+                // if (eppi0_.pT_miss > 0.2) return;
+                // if (eppi0_.t > 2) return;
+                if (abs(eppi0_.E_miss) > 2) return;
                 if (eppi0_.theta_e_g1 * 180.0/M_PI < 4 || eppi0_.theta_e_g2 * 180.0/M_PI < 4) return; // BOBBY
                 if (eppi0_.theta_g1_g2 * 180.0/M_PI < 1) return; // BOBBY
                 if (eppi0_.pi0_thetaX * 180.0/M_PI > 4) return; // used in CLAS6 analysis
-                if (eppi0_.m2_epX > 1) return;
-                if (eppi0_.m2_epi0X > 3) return;
+                // if (eppi0_.m2_epX > 1) return;
+                // if (eppi0_.m2_epi0X > 3) return;
 
                 passREC = true;
 
